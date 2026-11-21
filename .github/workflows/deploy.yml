@@ -1,0 +1,53 @@
+name: Siteyi yayınla
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      PROJECT: ${{ vars.PROJECT_NAME || 'ucfiyat' }}
+    steps:
+      - name: Gizli anahtarları kontrol et
+        id: check
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || [ -z "$ADMIN_PASSWORD" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID ve ADMIN_PASSWORD gizli anahtarları eklenmemiş. README'deki kurulum adımlarına bakın."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with: { node-version: 22 }
+      - if: steps.check.outputs.ready == 'true'
+        run: npm ci --no-audit --no-fund
+      - if: steps.check.outputs.ready == 'true'
+        run: npm test
+      - name: D1 veritabanını hazırla (yoksa oluşturur)
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          ID=$(npx wrangler d1 list --json | node -e "const l=JSON.parse(require('fs').readFileSync(0));const d=l.find(x=>x.name==='ucfiyat-db');console.log(d?d.uuid:'')")
+          if [ -z "$ID" ]; then
+            npx wrangler d1 create ucfiyat-db
+            ID=$(npx wrangler d1 list --json | node -e "const l=JSON.parse(require('fs').readFileSync(0));console.log(l.find(x=>x.name==='ucfiyat-db').uuid)")
+          fi
+          sed -i "s/BURAYA_D1_KIMLIGI/$ID/" wrangler.toml
+          sed -i "s/^name = .*/name = \"$PROJECT\"/" wrangler.toml
+          npx wrangler d1 execute ucfiyat-db --remote --file=schema.sql
+      - name: Pages projesini hazırla ve yayınla
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          npx wrangler pages project create "$PROJECT" --production-branch main || true
+          printf '%s' "$ADMIN_PASSWORD" | npx wrangler pages secret put ADMIN_PASSWORD --project-name "$PROJECT"
+          npx wrangler pages deploy --project-name "$PROJECT" --branch main --commit-dirty=true

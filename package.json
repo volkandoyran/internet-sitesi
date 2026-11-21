@@ -1,0 +1,13 @@
+{
+  "name": "ucfiyat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler d1 execute ucfiyat-db --local --file=schema.sql && wrangler pages dev",
+    "scrape": "node scraper/scrape.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.166.0"
+  }
+}

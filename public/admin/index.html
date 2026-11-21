@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Üçfiyat yönetim</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    main { padding-bottom: 60px; }
+    .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin: 8px 0 20px; overflow-x: auto; }
+    .tabs button { font: inherit; font-weight: 700; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--muted); padding: 10px 12px; cursor: pointer; }
+    .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+    .panel { display: grid; gap: 14px; }
+    .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; }
+    label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+    input, select, textarea { font: inherit; font-size: 14px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%; }
+    textarea { font-family: ui-monospace, monospace; font-size: 13px; min-height: 90px; }
+    .btn { padding: 9px 16px; }
+    .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .btn.danger { background: var(--tr); color: #fff; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .err { color: var(--tr); font-size: 12.5px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 4px 6px; }
+    td { border-top: 1px solid var(--line); padding: 6px; vertical-align: top; }
+    td input, td select { min-width: 80px; }
+    details.p > summary { cursor: pointer; font-weight: 700; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+    details.p > summary .muted { font-weight: 400; }
+    .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 8px; font-weight: 600; }
+    .scroll { overflow-x: auto; }
+    #login { max-width: 380px; margin: 60px auto; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="logo-mark" aria-hidden="true"><i class="tr"></i><i class="gr"></i><i class="bg"></i></span>Üçfiyat yönetim</a>
+    <button id="logout" class="btn ghost" type="button" hidden>Çıkış yap</button>
+  </header>
+  <main>
+    <form id="login" class="box panel" hidden>
+      <label class="f">Admin şifresi <input type="password" name="pw" required autocomplete="current-password"></label>
+      <button class="btn" type="submit">Giriş yap</button>
+      <p class="err" id="login-err"></p>
+    </form>
+    <div id="app" hidden>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="products" aria-selected="true">Ürünler ve fiyatlar</button>
+        <button role="tab" data-tab="retailers" aria-selected="false">Satıcılar</button>
+        <button role="tab" data-tab="ads" aria-selected="false">Reklamlar</button>
+      </nav>
+      <section id="tab-products" class="panel"></section>
+      <section id="tab-retailers" class="panel" hidden></section>
+      <section id="tab-ads" class="panel" hidden></section>
+    </div>
+  </main>
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

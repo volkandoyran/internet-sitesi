@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Üçfiyat · Türkiye, Yunanistan, Bulgaristan bilgisayar fiyatları</title>
+  <meta name="description" content="Laptop, masaüstü ve bilgisayar parçalarının Türkiye, Yunanistan ve Bulgaristan'daki mağazalı satıcılardaki fiyatlarını karşılaştırın.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/" aria-label="Üçfiyat ana sayfa">
+      <span class="logo-mark" aria-hidden="true"><i class="tr"></i><i class="gr"></i><i class="bg"></i></span>
+      Üçfiyat
+    </a>
+    <div class="cur" role="group" aria-label="Para birimi">
+      <button type="button" data-cur="EUR" aria-pressed="true">€</button>
+      <button type="button" data-cur="TRY" aria-pressed="false">₺</button>
+    </div>
+  </header>
+
+  <div class="ad-slot" data-slot="ad_top" hidden></div>
+
+  <main>
+    <section class="intro">
+      <h1>Aynı bilgisayar,<br>üç ülkede kaça?</h1>
+      <p>Türkiye, Yunanistan ve Bulgaristan'da mağazası da olan satıcıların fiyatlarını yan yana görün. Model adı yazın ya da ihtiyacınızı ve bütçenizi seçin.</p>
+    </section>
+
+    <form id="search" class="search" autocomplete="off">
+      <div class="q">
+        <label for="q" class="sr">Model ya da özellik</label>
+        <input id="q" name="q" type="search" placeholder="ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”">
+        <button type="submit">Fiyatları bul</button>
+      </div>
+      <div class="filters">
+        <label>Tür
+          <select name="type">
+            <option value="">Hepsi</option>
+            <option value="laptop">Laptop</option>
+            <option value="desktop">Masaüstü</option>
+            <option value="part">Parça</option>
+          </select>
+        </label>
+        <label>En fazla bütçe
+          <span class="money"><input name="budget" type="number" min="0" step="50" inputmode="numeric" placeholder="sınırsız"><b class="cur-sign">€</b></span>
+        </label>
+        <label>RAM en az
+          <select name="ram"><option value="">Farketmez</option><option>8</option><option>16</option><option>32</option><option>64</option></select>
+        </label>
+        <label>Depolama en az
+          <select name="storage"><option value="">Farketmez</option><option value="256">256 GB</option><option value="512">512 GB</option><option value="1024">1 TB</option><option value="2048">2 TB</option></select>
+        </label>
+        <label>İşlemci
+          <select name="cpu">
+            <option value="">Farketmez</option>
+            <option value="30">Günlük işler (i3 / Ryzen 3 ve üstü)</option>
+            <option value="50">Orta (i5 / Ryzen 5 ve üstü)</option>
+            <option value="70">Güçlü (i7 / Ryzen 7 ve üstü)</option>
+            <option value="85">En üst (i9 / Ryzen 9)</option>
+          </select>
+        </label>
+        <label>Ekran kartı
+          <select name="gpu">
+            <option value="">Farketmez</option>
+            <option value="30">Hafif oyun (GTX 1650 / RTX 3050 ve üstü)</option>
+            <option value="55">Oyun (RTX 4060 ve üstü)</option>
+            <option value="66">Yüksek (RTX 4070 / 5070 ve üstü)</option>
+          </select>
+        </label>
+        <label>Bütçe hangi ülkede
+          <select name="country"><option value="">Herhangi biri</option><option value="TR">Türkiye</option><option value="GR">Yunanistan</option><option value="BG">Bulgaristan</option></select>
+        </label>
+      </div>
+    </form>
+
+    <p id="note" class="note" hidden></p>
+    <ol id="results" class="results" aria-live="polite"></ol>
+    <div id="similar-wrap" hidden>
+      <h2 class="sub">Benzer özellikteki ürünler</h2>
+      <ol id="similar" class="results"></ol>
+    </div>
+  </main>
+
+  <div class="ad-slot" data-slot="ad_bottom" hidden></div>
+
+  <footer class="foot">
+    <p>Fiyatlar satıcı sitelerinden günde bir kez alınır, satın almadan önce satıcının sitesinden kontrol edin. Türk lirası fiyatlar Avrupa Merkez Bankası kuruyla euroya çevrilir. Bulgaristan fiyatları euro üzerindendir.</p>
+    <p id="rate"></p>
+  </footer>
+
+  <template id="row">
+    <li class="item">
+      <button class="head" type="button" aria-expanded="false">
+        <span class="name"></span>
+        <span class="specs"></span>
+      </button>
+      <div class="lanes"></div>
+      <div class="detail" hidden></div>
+    </li>
+  </template>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
