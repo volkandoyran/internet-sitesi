@@ -169,3 +169,50 @@ test('şehit haberi: yaslı şablon, başsağlığı, koyu kapak, rozet', async 
   const k = haberiCoz({ id: 4, baslik: h.baslik, metin: s, kaynaklar: '[]', kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
   assert.match(haberKarti(k), /Acı haber<\/span>/);
 });
+
+test('görsel çalışması: wiki, yapay zekâ, bekle ve şehit ayrımı; günlük sınır', async () => {
+  const { gorselleriDoldur } = await import('../gundem-sitesi/src/gorsel.js');
+  const yazilan = [];
+  const haberlerListe = [
+    { id: 1, baslik: 'Macron Paris’te açıklama yaptı', metin: 'x' },
+    { id: 2, baslik: 'İstanbul’da sağanak', metin: 'x' },
+    { id: 3, baslik: 'Trafik yoğunluğu', metin: 'x' },
+    { id: 4, baslik: '2 asker şehit oldu', metin: 'x' },
+  ];
+  const env = {
+    GORSEL_AI_LIMIT: '1',
+    GORSEL: { put: async () => {} },
+    DB: { prepare: (sql) => ({
+      bind: (...a) => ({
+        all: async () => ({ results: haberlerListe }),
+        run: async () => { yazilan.push(a); },
+      }),
+      first: async () => ({ n: 0 }),
+    }) },
+    AI: { run: async (model) => model.includes('flux') ? { image: btoa('jpg') }
+      : { response: '{"kisi": "", "sahne": "rainy street"}' } },
+  };
+  const eski = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('ağ yok'); };
+  try {
+    env.AI.run = async (model, b) => {
+      if (model.includes('flux')) return { image: btoa('jpg') };
+      return { response: b.messages[1].content.includes('Macron') ? '{"kisi":"Emmanuel Macron","sahne":"x"}' : '{"kisi":"","sahne":"rain"}' };
+    };
+    const r = await gorselleriDoldur(env, {});
+    // 1: Wikipedia ağ hatası → AI görseli; 2-3: AI hakkı bitti → bekle; 4: şehit → yok
+    assert.deepEqual(yazilan.map((x) => [x[0], x[1]]), [[1, 'ai'], [2, 'bekle'], [3, 'bekle'], [4, 'yok']]);
+    assert.equal(r.hatalar.length, 1);
+  } finally { globalThis.fetch = eski; }
+});
+
+test('SEO: Search Console etiketi, Open Graph ve NewsArticle', async () => {
+  const { kabuk: kb, haberSemasi } = await import('../gundem-sitesi/src/sayfa.js');
+  const h = haberiCoz({ id: 5, baslik: 'Başlık </script>', metin: 'Metin', kaynaklar: JSON.stringify([{ ad: 'TRT Haber', url: 'https://trt/1' }]), kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  const html = await kb({ GOOGLE_DOGRULAMA: 'abc123' }, { baslik: h.baslik, govde: '', kanonik: 'https://s/haber/5', makale: haberSemasi({}, 'https://s', h, false) }).text();
+  assert.match(html, /<meta name="google-site-verification" content="abc123">/);
+  assert.match(html, /og:type" content="article"/);
+  assert.match(html, /"@type":"NewsArticle"/);
+  assert.doesNotMatch(html, /Başlık <\/script>/);
+  assert.match(html, /"name":"TRT Haber"/);
+});

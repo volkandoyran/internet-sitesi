@@ -10,8 +10,9 @@ import { sehitMi } from './metin.js';
 const SAAT = 3600e3;
 const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
 export const gorselAyarlari = (env) => ({
-  limit: sayi(env.GORSEL_LIMIT, 6),        // çalışma başına görsel aranan haber
-  aiLimit: sayi(env.GORSEL_AI_LIMIT, 1),   // çalışma başına yapay zekâ görseli (~50 nöron)
+  limit: sayi(env.GORSEL_LIMIT, 9),        // görsel çalışması başına haber (ücretsiz planın 50 alt istek sınırına sığar)
+  aiLimit: sayi(env.GORSEL_AI_LIMIT, 2),   // çalışma başına yapay zekâ görseli
+  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 40), // 24 saatte en fazla yapay zekâ görseli (~50 nöron/adet, ücretsiz kotaya sığsın)
   saklaGun: sayi(env.SAKLA_GUN, 7),
 });
 
@@ -77,46 +78,50 @@ function base64Bayt(b64) {
 
 export async function aiGorsel(env, id, sahne, baslik) {
   const istem = `Editorial news photo illustration: ${sahne || baslik}. Realistic, natural light, wide shot, no text, no captions, no logos, no recognizable real people.`;
-  const r = await env.AI.run(GORSEL_MODEL, { prompt: istem.slice(0, 900), steps: 4, width: 768, height: 432 });
+  const r = await env.AI.run(GORSEL_MODEL, { prompt: istem.slice(0, 900), steps: 4 });
   if (!r?.image) throw new Error('görsel modeli boş yanıt verdi');
   await env.GORSEL.put(`g/${id}.jpg`, base64Bayt(r.image), { expirationTtl: gorselAyarlari(env).saklaGun * 24 * 3600 + 86400, metadata: { tur: 'image/jpeg' } });
   return { tur: 'ai', url: null, atif: 'Yapay zekâ ile üretilmiş temsili görsel' };
 }
 
-// Zamanlanmış çalışmada: görseli olmayan en önemli haberlere görsel bul
+// Zamanlanmış görsel çalışmasında: görseli olmayan haberlere (en önemlilerden başlayarak, eskiler dahil) görsel bul.
+// 'bekle': kişi fotoğrafı yok ve yapay zekâ görsel hakkı dolmuştu; 12 saat sonra yeniden denenir.
 export async function gorselleriDoldur(env, rapor = {}) {
-  if (!env.AI) return;
+  if (!env.AI) return rapor;
   const a = gorselAyarlari(env);
   const { results } = await env.DB.prepare(`SELECT h.id, h.baslik, h.metin FROM haberler h
-    WHERE h.metin IS NOT NULL AND NOT EXISTS (SELECT 1 FROM gorseller g WHERE g.haber_id = h.id)
+    LEFT JOIN gorseller g ON g.haber_id = h.id
+    WHERE h.metin IS NOT NULL AND (g.haber_id IS NULL OR (g.tur = 'bekle' AND g.zaman < strftime('%Y-%m-%dT%H:%M:%fZ','now','-12 hours')))
     ORDER BY h.kaynak_sayisi DESC, h.ilk_gorulme DESC LIMIT ?`).bind(a.limit).all();
-  let ai = env.GORSEL ? a.aiLimit : 0;
+  const gunluk = (await env.DB.prepare(`SELECT count(*) n FROM gorseller WHERE tur = 'ai' AND zaman > strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')`).first())?.n || 0;
+  let ai = env.GORSEL ? Math.max(0, Math.min(a.aiLimit, a.aiGunluk - gunluk)) : 0;
+  const say = (k) => { rapor[k] = (rapor[k] || 0) + 1; };
   for (const h of results) {
     let sonuc = null;
-    // Şehit haberlerinde yapay zekâ ya da başka kişinin fotoğrafı kullanılmaz; koyu yas kapağı gösterilir
-    if (sehitMi(h)) sonuc = { tur: 'yok', url: null, atif: null };
-    else try {
-      const c = await env.AI.run(CIKARMA_MODEL, {
-        messages: [{ role: 'system', content: CIKARMA_SISTEM }, { role: 'user', content: `Başlık: ${h.baslik}\nMetin: ${h.metin}` }],
-        max_tokens: 120, temperature: 0.1,
-      });
-      const j = jsonAyikla(typeof c === 'string' ? c : c?.response);
-      const kisi = typeof j.kisi === 'string' ? j.kisi.trim() : '';
-      if (kisi) sonuc = await wikiFoto(kisi).catch(() => null);
-      if (!sonuc) {
-        if (ai <= 0) continue; // bu çalışmada yapay zekâ görsel hakkı bitti, sonraki çalışmada denenir
-        ai--;
-        sonuc = await aiGorsel(env, h.id, typeof j.sahne === 'string' ? j.sahne : '', h.baslik);
+    try {
+      // Şehit haberlerinde yapay zekâ ya da başka kişinin fotoğrafı kullanılmaz; koyu yas kapağı gösterilir
+      if (sehitMi(h)) sonuc = { tur: 'yok', url: null, atif: null };
+      else {
+        const c = await env.AI.run(CIKARMA_MODEL, {
+          messages: [{ role: 'system', content: CIKARMA_SISTEM }, { role: 'user', content: `Başlık: ${h.baslik}\nMetin: ${h.metin}` }],
+          max_tokens: 120, temperature: 0.1,
+        });
+        const j = jsonAyikla(typeof c === 'string' ? c : c?.response);
+        const kisi = typeof j.kisi === 'string' ? j.kisi.trim() : '';
+        if (kisi) sonuc = await wikiFoto(kisi).catch((e) => { (rapor.hatalar ||= []).push(`Wikipedia ${h.id}: ${e.message || e}`); return null; });
+        if (!sonuc && ai > 0) { ai--; sonuc = await aiGorsel(env, h.id, typeof j.sahne === 'string' ? j.sahne : '', h.baslik); }
+        if (!sonuc) sonuc = { tur: 'bekle', url: null, atif: null };
       }
     } catch (e) {
-      (rapor.hatalar ||= []).push(`Görsel: ${e.message || e}`);
-      if (/neuron|quota|limit|4006/i.test(String(e.message))) break; // günlük kota bitti
-      sonuc = { tur: 'yok', url: null, atif: null };
+      (rapor.hatalar ||= []).push(`Görsel ${h.id}: ${e.message || e}`);
+      if (/neuron|quota|4006|too many subrequests/i.test(String(e.message))) break; // kota/istek sınırı: sonraki çalışmada
+      continue; // geçici hata: kayıt yazılmaz, sonra yeniden denenir
     }
     await env.DB.prepare('INSERT OR REPLACE INTO gorseller (haber_id, tur, url, atif) VALUES (?, ?, ?, ?)')
       .bind(h.id, sonuc.tur, sonuc.url, sonuc.atif).run();
-    rapor.gorsel = (rapor.gorsel || 0) + 1;
+    say(`gorsel_${sonuc.tur}`);
   }
+  return rapor;
 }
 
 export async function gorselBilgi(env, id) {

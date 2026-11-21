@@ -5,7 +5,8 @@
   "main": "src/worker.js",
   "compatibility_date": "2026-11-21",
   // Yarım saatte bir toplar (ücretsiz planda Workers AI kotasına sığacak sıklık)
-  "triggers": { "crons": ["*/30 * * * *"] },
+  // İkinci zamanlayıcı yalnızca haber görsellerini doldurur (src/worker.js GORSEL_CRON ile aynı olmalı)
+  "triggers": { "crons": ["*/30 * * * *", "5,15,25,35,45,55 * * * *"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "gundem-db", "database_id": "1a86cdff-48b3-4444-959d-fd0f6a900b92" }
   ],

@@ -58,7 +58,7 @@ p.ozet{margin:0 0 8px}.etiket{font-size:13px;color:var(--soluk);margin-right:6px
 .detay .ozet{font-size:18px}.detay ul{padding-left:20px}.detay li{margin:6px 0}
 footer{border-top:1px solid var(--cizgi);margin-top:30px;padding:18px 0 40px;font-size:13px;color:var(--soluk)}`;
 
-export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, gorsel, durum = 200 }) {
+export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, gorsel, makale, durum = 200 }) {
   const ad = env.SITE_ADI || 'Gündem Özeti';
   const tamBaslik = baslik ? `${baslik} · ${ad}` : `${ad} · Türkiye gündemi`;
   const acik = aciklama || env.SITE_ACIKLAMA || '';
@@ -66,7 +66,10 @@ export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, gors
   const sekme = (yol, ad2, k) => `<a href="${yol}" class="${secili === k ? 'on' : ''}">${ad2}</a>`;
   const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${kac(tamBaslik)}</title><meta name="description" content="${kac(acik)}">
-<meta property="og:title" content="${kac(baslik || ad)}"><meta property="og:description" content="${kac(acik)}"><meta property="og:type" content="website">${gorsel ? `<meta property="og:image" content="${kac(gorsel)}"><meta name="twitter:card" content="summary_large_image">` : ''}
+<meta property="og:title" content="${kac(baslik || ad)}"><meta property="og:description" content="${kac(acik)}"><meta property="og:type" content="${makale ? 'article' : 'website'}">
+<meta property="og:site_name" content="${kac(ad)}"><meta property="og:locale" content="tr_TR">${kanonik ? `<meta property="og:url" content="${kac(kanonik)}">` : ''}
+${env.GOOGLE_DOGRULAMA ? `<meta name="google-site-verification" content="${kac(env.GOOGLE_DOGRULAMA)}">` : ''}
+${makale ? `<script type="application/ld+json">${JSON.stringify(makale).replace(/</g, '\\u003c')}</script>` : ''}${gorsel ? `<meta property="og:image" content="${kac(gorsel)}"><meta name="twitter:card" content="summary_large_image">` : ''}
 ${kanonik ? `<link rel="canonical" href="${kac(kanonik)}">` : ''}
 <link rel="alternate" type="application/rss+xml" title="${kac(ad)}" href="/rss.xml">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c0261c'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='Georgia' font-weight='bold'%3EG%3C/text%3E%3C/svg%3E">
@@ -133,3 +136,17 @@ export const HAKKINDA = `<div class="detay"><h1>Hakkında</h1>
 <p>Bu site Türkiye ve dünya gündemindeki haberleri tek yerde, kısa ve tarafsız özetlerle sunar. Haberler, haber sitelerinin herkese açık RSS akışlarından otomatik olarak toplanır; aynı olayı veren haberler birleştirilir ve kaç kaynakta geçtiği gösterilir. Yabancı basındaki önemli haberler Türkçeye çevrilerek eklenir.</p>
 <p>Özetler ve çeviriler yapay zekâ ya da şablonla, yalnızca haberin başlığı ve kısa açıklamasından yazılır. Haber metinleri ve görseller kopyalanmaz; her haberde haberin alındığı kaynak belirtilir.</p>
 <p>Bir haberle ilgili düzeltme ya da kaldırma isteğiniz varsa lütfen ilgili kaynağa ve bize bildirin.</p></div>`;
+
+// Google için haber yapısal verisi (NewsArticle)
+export function haberSemasi(env, kok, h, foto) {
+  return {
+    '@context': 'https://schema.org', '@type': 'NewsArticle',
+    headline: h.baslik.slice(0, 110), description: h.metin, inLanguage: 'tr',
+    datePublished: h.zaman, dateModified: h.zaman, mainEntityOfPage: `${kok}/haber/${h.id}`,
+    ...(foto ? { image: [`${kok}/gorsel/${h.id}.jpg`] } : {}),
+    author: { '@type': 'Organization', name: env.SITE_ADI || 'Gündem Özeti', url: `${kok}/` },
+    publisher: { '@type': 'Organization', name: env.SITE_ADI || 'Gündem Özeti', url: `${kok}/` },
+    isBasedOn: h.kaynaklar.map((k) => ({ '@type': 'CreativeWork', publisher: { '@type': 'Organization', name: k.ad } })),
+  };
+}
+
