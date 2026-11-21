@@ -1,6 +1,7 @@
 // Worker giriş noktası: /api/* ve /ads.txt burada işlenir, diğer her şey public/ klasöründen sunulur.
 // Ana sayfaya admin panelinden girilen <head> kodu (ör. AdSense) eklenir.
 import { handleApi } from './api.js';
+import { matchedPage, specsListPage, productPage, sitemap } from './pages.js';
 import SCHEMA from '../schema.sql';
 
 // Tablolar yoksa schema.sql'i çalıştırır (ilk yayından sonraki ilk istekte bir kez)
@@ -24,9 +25,13 @@ function ensureSchema(env) {
     }
     // Ülkeler arası eşleştirme anahtarları
     if (!cols.includes('mkeys')) await env.DB.prepare('ALTER TABLE products ADD COLUMN mkeys TEXT').run();
+    // Mağaza sayfalarından okunan teknik özellikler
+    if (!cols.includes('specs')) await env.DB.prepare('ALTER TABLE products ADD COLUMN specs TEXT').run();
   })().catch((e) => { ready = null; throw e; });
   return ready;
 }
+
+const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 
 async function setting(env, key) {
   try {
@@ -47,7 +52,13 @@ export default {
     if (url.pathname === '/ads.txt') {
       return new Response(await setting(env, 'ads_txt'), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     }
-    const res = await env.ASSETS.fetch(request);
+    if (url.pathname === '/sitemap.xml') return sitemap(env);
+    let res;
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    if (path === '/eslesen') res = await matchedPage(env);
+    else if (path === '/ozellikler') res = await specsListPage(env);
+    else if (path.startsWith('/urun/')) res = await productPage(env, safeDecode(path.slice(6)), url.origin);
+    else res = await env.ASSETS.fetch(request);
     if (!(res.headers.get('content-type') || '').includes('text/html') || url.pathname.startsWith('/admin')) return res;
     const code = await setting(env, 'ad_head');
     if (!code) return res;

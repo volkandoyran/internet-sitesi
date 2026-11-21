@@ -6,6 +6,10 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 - Aranan model yoksa en yakın özellikteki ürünleri önerir
 - Ürünler mağazalardan otomatik gelir: katalog tarayıcısı mağazaların site haritalarından laptop, masaüstü ve parçaları bulur, fiyatlarını günde 4 kez günceller. Aynı model farklı mağazalardaysa üretici parça koduyla eşleştirilip yan yana gösterilir
 - Türk lirası fiyatlar ECB kuruyla euroya çevrilir
+- `/eslesen`: birden fazla ülkede satılan ürünler, ülkelere göre fiyat ve en ucuz ülke
+- `/ozellikler`: tüm laptop ve masaüstü bilgisayarların teknik özellik listesi; `/urun/<id>-<ad>`: tek ürün sayfası (özellikler, tüm mağazalar, "Mağazada gör" bağlantıları). Özellikler mağaza sayfasındaki özellik tablosundan (tarayıcı fiyatı okurken aynı sayfadan, ek istek ve Firecrawl kredisi harcamadan) ve ürün adından otomatik çıkarılır (`lib/pcspecs.js`)
+- `/sitemap.xml` Worker tarafından üretilir; ürün sayfalarını da içerir
+- Site satış yapmaz: her sayfanın üstündeki bilgi bandı ve fiyat bağlantılarının yanındaki notlar bunu belirtir
 - `/admin` adresinde yönetim paneli: ürün, satıcı bağlantısı, elle fiyat, satıcı açma/kapama, reklam kodları
 - Hazır reklam alanları (üst, liste içi, alt, `<head>` kodu ve `ads.txt`)
 

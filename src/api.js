@@ -1,5 +1,6 @@
 // API. env.DB = D1, env.ADMIN_PASSWORD = gizli anahtar.
 import { cpuScore, gpuScore, parseQuery, distance } from '../lib/specs.js';
+import { cleanSpecs } from '../lib/pcspecs.js';
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -55,7 +56,7 @@ async function ads(env) {
 }
 
 // Ürünleri, aktif satıcılardaki teklifleriyle birlikte getir
-async function loadProducts(env, where = '', binds = []) {
+export async function loadProducts(env, where = '', binds = []) {
   const products = (await env.DB.prepare(`SELECT * FROM products ${where}`).bind(...binds).all()).results;
   if (!products.length) return [];
   const offers = (await env.DB.prepare(
@@ -178,7 +179,7 @@ async function productDetail(env, id) {
 
 // ---------- Admin ----------
 
-async function rateFor(env, currency) {
+export async function rateFor(env, currency) {
   if (!currency || currency === 'EUR') return 1;
   const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('rate_' + currency).first();
   return row && row.value ? +row.value : null; // 1 EUR = rate X
@@ -463,6 +464,8 @@ async function catalogUpsert(env, body) {
       const p = cleanProduct(it);
       p.match_key = it.match_key || null;
       p.mkeys = keys.length ? ` ${keys.join(' ')} ` : null;
+      const sp = cleanSpecs(it.specs);
+      p.specs = sp ? JSON.stringify(sp) : null;
       const keys = Object.keys(p).filter((k) => p[k] != null);
       const row = await env.DB.prepare(`INSERT INTO products (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')}) RETURNING id`)
         .bind(...keys.map((k) => p[k])).first();
@@ -487,8 +490,11 @@ async function catalogUpsert(env, body) {
 function refreshProduct(env, id, it) {
   const p = cleanProduct(it);
   const cols = ['cpu', 'cpu_score', 'gpu', 'gpu_score', 'ram_gb', 'storage_gb', 'screen_in'];
-  return env.DB.prepare(`UPDATE products SET type = ?, category = ?, ${cols.map((c) => `${c} = COALESCE(?, ${c})`).join(', ')} WHERE id = ?`)
-    .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), id);
+  // Mağaza sayfasındaki teknik özellikler mevcut olanlarla birleştirilir (aynı ürün birden çok mağazadan gelebilir)
+  const sp = cleanSpecs(it.specs);
+  return env.DB.prepare(`UPDATE products SET type = ?, category = ?, ${cols.map((c) => `${c} = COALESCE(?, ${c})`).join(', ')},
+      specs = CASE WHEN ? IS NULL THEN specs ELSE json_patch(COALESCE(specs, '{}'), ?) END WHERE id = ?`)
+    .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), sp ? JSON.stringify(sp) : null, sp ? JSON.stringify(sp) : null, id);
 }
 
 async function loadAllAdmin(env) {
