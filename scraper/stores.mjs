@@ -12,6 +12,10 @@ const newestFirst = (a, b) => lastNum(b) - lastNum(a);
 const TM_KIND = { laptopi: { type: 'laptop', category: null }, monitori: { type: 'part', category: 'monitor' },
   'nastolni-kompiutri': { type: 'desktop', category: null }, 'nastolni-kompyutri': { type: 'desktop', category: null }, kompiutri: { type: 'desktop', category: null } };
 
+const jarCode = (u) => (u.match(/-prod-([a-z]+)/) || [])[1] || '';
+const JAR_PC = /^(cpup|nb|ntb|lap|ssd|hddi|hddn|vga|gpu|mem|ddr|mb|mbd|mon|psu|pws|casep|pc|desk|dt|aio|wks)/;
+const JAR_SKIP = /^(acc|bro|brb|casa|casea|caseh|cab|ups|tel|tab|prn|toner|ink|kbd|mou|hds|spk|cam|net|sw)/;
+
 export const STORES = {
   pckolik: {
     // Mağaza yalnızca bilgisayar ve parça satıyor: tüm ürün haritası
@@ -26,13 +30,15 @@ export const STORES = {
   },
   jarcomputers: {
     sitemapsFromRobots: 'https://www.jarcomputers.com/robots.txt',
-    // Bağlantıdaki ürün kodu öneki kategoriyi gösterir (cpup = işlemci ...); bilinmeyenlerde ad denenir
+    // Bağlantıdaki ürün kodu öneki kategoriyi gösterir (cpup = işlemci, casep = kasa ...).
+    // Bilinen bilgisayar önekleri önce taranır; aksesuar/mobilya önekleri hiç alınmaz; bilinmeyenlerde ad denenir.
     accept: (u) => {
-      if (!u.includes('-prod-') || /-prod-acc/.test(u)) return false; // acc = aksesuar
-      const code = (u.match(/-prod-([a-z]+)/) || [])[1] || '';
-      if (/^(cpup|nb|ntb|lap|ssd|hddi|hddn|vga|gpu|mem|ddr|mb|mbd|mon|psu|pws|casep|pc|desk|dt|aio|wks)/.test(code)) return true;
-      return classify(slugText(u)) !== null;
+      if (!u.includes('-prod-')) return false;
+      const code = jarCode(u);
+      if (JAR_SKIP.test(code)) return false;
+      return JAR_PC.test(code) || classify(slugText(u)) !== null;
     },
+    order: (a, b) => JAR_PC.test(jarCode(b)) - JAR_PC.test(jarCode(a)),
   },
   technomarket: {
     sitemaps: [0, 1, 2, 3].map((i) => `https://www.technomarket.bg/sitemap/${i}.xml`),
