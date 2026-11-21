@@ -129,7 +129,10 @@ async function processUrl(id, cfg, url, stat, items) {
     const html = await fetchPage(url, cfg);
     const p = extractProduct(html);
     if (!p) { if (DRY) console.log('  [bilgi yok]', url, html.length, (html.match(/<title>([^<]{0,100})/) || [])[1]); throw new Error('ürün bilgisi bulunamadı'); }
-    let kind = classify(p.name) || (cfg.kind && !isExcluded(p.name) && cfg.kind(url)) || null;
+    // Mağaza kategorisi yalnızca okunabilir adlarda kullanılır: tek parça kod adlar
+    // (ör. "SIF15_CEZH_2201_1000-WIN-14") yanlış kategoriye konmuş ürün olabilir, alınmaz.
+    const readable = /\s/.test(p.name.trim());
+    let kind = classify(p.name) || (cfg.kind && readable && !isExcluded(p.name) && cfg.kind(url)) || null;
     // Fiyatı türüne göre çok düşükse aksesuardır (ör. 8 € "laptop" kılıfı)
     if (kind && p.price) {
       const eur = p.currency === 'TRY' ? (rateMap.TRY ? p.price / rateMap.TRY : null) : p.price;
