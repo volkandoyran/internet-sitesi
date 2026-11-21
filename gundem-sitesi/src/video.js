@@ -81,6 +81,50 @@ async function anahtarDogru(env, verilen) {
   return a.every((x, i) => x === b[i]);
 }
 
+// GitHub Actions kimliği (OIDC): video iş akışı gizli anahtar girmeden kendini kanıtlar. Yalnızca bu
+// deponun main dalındaki gundem-video.yml iş akışından gelen, GitHub imzalı jeton kabul edilir.
+const OIDC = 'https://token.actions.githubusercontent.com';
+export const OIDC_KITLE = 'gundem-sitesi';
+const b64u = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
+const jsonCoz = (s) => JSON.parse(new TextDecoder().decode(b64u(s)));
+let jwks = null;
+let jwksZaman = 0;
+async function githubAnahtarlari(yenile) {
+  if (!jwks || yenile || Date.now() - jwksZaman > SAAT) {
+    const r = await fetch(`${OIDC}/.well-known/jwks`);
+    if (!r.ok) throw new Error(`JWKS ${r.status}`);
+    jwks = (await r.json()).keys;
+    jwksZaman = Date.now();
+  }
+  return jwks;
+}
+
+export async function githubJetonuDogru(env, jwt, { simdi = Date.now(), anahtarlar = githubAnahtarlari } = {}) {
+  try {
+    const [h, p, imza] = String(jwt || '').split('.');
+    if (!imza) return false;
+    const bas = jsonCoz(h);
+    const y = jsonCoz(p);
+    const depo = env.VIDEO_DEPO || 'volkandoyran/internet-sitesi';
+    if (bas.alg !== 'RS256' || y.iss !== OIDC || y.aud !== OIDC_KITLE || y.repository !== depo || y.ref !== 'refs/heads/main') return false;
+    if (!String(y.workflow_ref || '').startsWith(`${depo}/.github/workflows/gundem-video.yml@`)) return false;
+    if (!(y.exp * 1000 > simdi) || (y.nbf && y.nbf * 1000 > simdi + 60e3)) return false;
+    const jwk = (await anahtarlar(false)).find((k) => k.kid === bas.kid) || (await anahtarlar(true)).find((k) => k.kid === bas.kid);
+    if (!jwk) return false;
+    const key = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    return await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64u(imza), new TextEncoder().encode(`${h}.${p}`));
+  } catch {
+    return false;
+  }
+}
+
+async function yetkili(env, req) {
+  const tasiyici = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
+  if (tasiyici && (await githubJetonuDogru(env, tasiyici))) return true;
+  return anahtarDogru(env, req.headers.get('x-video-anahtar'));
+}
+
 const iso = (ms) => new Date(ms).toISOString();
 
 async function siradaki(env, simdi = Date.now()) {
@@ -130,8 +174,9 @@ export async function videoIstek(req, env, yol) {
     h.set('content-length', String(n));
     return new Response(req.method === 'HEAD' ? null : veri, { headers: h });
   }
+  if (yol === '/video/liste' && (req.method === 'GET' || req.method === 'HEAD')) return videoListesi(env);
   if (!yol.startsWith('/api/video')) return null;
-  if (!(await anahtarDogru(env, req.headers.get('x-video-anahtar')))) return Response.json({ hata: 'yetkisiz' }, { status: 401 });
+  if (!(await yetkili(env, req))) return Response.json({ hata: 'yetkisiz' }, { status: 401 });
 
   if (yol === '/api/video/sira' && req.method === 'POST') return Response.json(await siradaki(env));
 
@@ -165,4 +210,31 @@ export async function videoIstek(req, env, yol) {
     return Response.json({ tamam: true });
   }
   return Response.json({ hata: 'bulunamadı' }, { status: 404 });
+}
+
+const kacis = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Son üretilen videolar: telefondan izle, indir, açıklamayı kopyala (hesaplar bağlanana kadar elle paylaşım için)
+async function videoListesi(env) {
+  const a = videoAyarlari(env);
+  const l = (await env.DB.prepare(`SELECT v.haber_id, v.zaman, h.baslik, h.metin, h.kaynaklar,
+      (SELECT group_concat(s.platform || ':' || s.durum) FROM paylasimlar s WHERE s.haber_id = v.haber_id AND s.platform IN ('youtube','instagram','tiktok')) AS paylasim
+    FROM videolar v JOIN haberler h ON h.id = v.haber_id WHERE v.dosya = 1 AND v.zaman >= ? ORDER BY v.zaman DESC LIMIT 30`)
+    .bind(iso(Date.now() - a.saklaSaat * SAAT)).all()).results;
+  const kart = (v) => `<article><h2>${kacis(v.baslik)}</h2>
+<video controls preload="metadata" playsinline src="/video/${v.haber_id}.mp4"></video>
+<p class="m">${kacis(new Date(v.zaman).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' }))}${v.paylasim ? ` · ${kacis(v.paylasim.replace(/:paylasildi/g, ' ✓').replace(/:hata/g, ' ✗'))}` : ''}</p>
+<a class="b" href="/video/${v.haber_id}.mp4" download="gundem-${v.haber_id}.mp4">Videoyu indir</a>
+<textarea readonly rows="7">${kacis(videoAciklamasi(v))}</textarea>
+<button type="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Kopyalandı'">Açıklamayı kopyala</button></article>`;
+  const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Videolar · ${kacis(env.SITE_ADI || 'Gündem Özeti')}</title><style>
+body{margin:0;font:16px/1.5 system-ui,sans-serif;background:#0b1220;color:#e5e7eb}main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:22px}article{background:#162036;border-radius:12px;padding:16px;margin:0 0 20px}h2{font-size:17px;margin:0 0 10px}
+video{width:100%;aspect-ratio:9/16;max-height:70vh;background:#000;border-radius:8px}.m{color:#9ca3af;font-size:13px;margin:6px 0 10px}
+textarea{width:100%;box-sizing:border-box;margin:10px 0 6px;background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px;font-size:14px;line-height:1.4;font-family:inherit}
+a.b,button{display:inline-block;background:#d92a2a;color:#fff;border:0;border-radius:8px;padding:10px 14px;font:600 15px system-ui;text-decoration:none;cursor:pointer}
+</style></head><body><main><h1>Son videolar</h1><p class="m">Videolar ${a.saklaSaat} saat saklanır. Hesaplar bağlı değilken buradan indirip elle paylaşabilirsin.</p>
+${l.length ? l.map(kart).join('\n') : '<p>Henüz video yok. Video işi günde 4 kez çalışır (08:20, 12:20, 16:20, 20:20).</p>'}</main></body></html>`;
+  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }

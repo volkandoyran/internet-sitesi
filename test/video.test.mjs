@@ -48,3 +48,33 @@ test('video başlığı 100 karakteri geçmez', () => {
   assert.match(b, /#Shorts$/);
   assert.deepEqual(kaynakAdlari(haber()), ['Anadolu Ajansı', 'NTV']);
 });
+
+import { githubJetonuDogru, OIDC_KITLE } from '../gundem-sitesi/src/video.js';
+
+const b64u = (b) => Buffer.from(b).toString('base64url');
+async function jetonUret(ozel, degisen = {}, kid = 'k1') {
+  const simdi = Math.floor(Date.now() / 1000);
+  const yuk = {
+    iss: 'https://token.actions.githubusercontent.com', aud: OIDC_KITLE, repository: 'volkandoyran/internet-sitesi',
+    ref: 'refs/heads/main', workflow_ref: 'volkandoyran/internet-sitesi/.github/workflows/gundem-video.yml@refs/heads/main',
+    exp: simdi + 300, nbf: simdi - 5, ...degisen,
+  };
+  const govde = `${b64u(JSON.stringify({ alg: 'RS256', kid }))}.${b64u(JSON.stringify(yuk))}`;
+  const imza = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', ozel, new TextEncoder().encode(govde));
+  return `${govde}.${b64u(new Uint8Array(imza))}`;
+}
+
+test('GitHub OIDC jetonu: yalnızca bu deponun main dalındaki video iş akışı kabul edilir', async () => {
+  const cift = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+  const jwk = { ...(await crypto.subtle.exportKey('jwk', cift.publicKey)), kid: 'k1' };
+  const secenek = { anahtarlar: async () => [jwk] };
+  assert.equal(await githubJetonuDogru({}, await jetonUret(cift.privateKey), secenek), true);
+  assert.equal(await githubJetonuDogru({}, await jetonUret(cift.privateKey, { repository: 'baskasi/depo' }), secenek), false);
+  assert.equal(await githubJetonuDogru({}, await jetonUret(cift.privateKey, { ref: 'refs/heads/dal' }), secenek), false);
+  assert.equal(await githubJetonuDogru({}, await jetonUret(cift.privateKey, { aud: 'baska' }), secenek), false);
+  assert.equal(await githubJetonuDogru({}, await jetonUret(cift.privateKey, { workflow_ref: 'volkandoyran/internet-sitesi/.github/workflows/scrape.yml@refs/heads/main' }), secenek), false);
+  assert.equal(await githubJetonuDogru({}, await jetonUret(cift.privateKey, { exp: 1 }), secenek), false);
+  const baska = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+  assert.equal(await githubJetonuDogru({}, await jetonUret(baska.privateKey), secenek), false, 'yanlış imza');
+  assert.equal(await githubJetonuDogru({}, 'bozuk.jeton', secenek), false);
+});

@@ -67,8 +67,27 @@ def jsonla(govde):
 
 # ---------- site ----------
 
+_JETON = None
+
+
+def kimlik():
+    """GitHub Actions OIDC jetonu (gizli anahtar gerekmez); yoksa VIDEO_ANAHTAR."""
+    global _JETON
+    url, tok = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL'), os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
+    if url and tok:
+        if not _JETON:
+            s, _, g = istek(url + '&audience=gundem-sitesi', basliklar={'authorization': f'Bearer {tok}'})
+            if s != 200:
+                raise RuntimeError(f'GitHub kimlik jetonu alınamadı: {s}')
+            _JETON = jsonla(g)['value']
+        return {'authorization': f'Bearer {_JETON}'}
+    if os.environ.get('VIDEO_ANAHTAR'):
+        return {'x-video-anahtar': os.environ['VIDEO_ANAHTAR']}
+    raise RuntimeError('Kimlik yok: GitHub Actions içinde id-token izni ya da VIDEO_ANAHTAR gerekli')
+
+
 def site(yol, **kw):
-    b = {'x-video-anahtar': os.environ['VIDEO_ANAHTAR'], **kw.pop('basliklar', {})}
+    b = {**kimlik(), **kw.pop('basliklar', {})}
     return istek(os.environ['GUNDEM_URL'].rstrip('/') + yol, basliklar=b, **kw)
 
 
@@ -223,7 +242,7 @@ def youtube_yukle(haber, dosya):
 
 
 def instagram_paylas(haber, video_url):
-    host = os.environ.get('IG_GRAPH', 'https://graph.facebook.com/v23.0')
+    host = os.environ.get('IG_GRAPH') or 'https://graph.facebook.com/v23.0'
     kul, tok = os.environ['IG_USER_ID'], os.environ['IG_ACCESS_TOKEN']
     s, _, g = istek(f'{host}/{kul}/media', method='POST', veri=urllib.parse.urlencode({
         'media_type': 'REELS', 'video_url': video_url, 'caption': haber['aciklama'][:2100], 'share_to_feed': 'true',
@@ -253,9 +272,7 @@ def main():
     if kuru:
         haber = ORNEK
     else:
-        if not os.environ.get('GUNDEM_URL') or not os.environ.get('VIDEO_ANAHTAR'):
-            log('GUNDEM_URL / VIDEO_ANAHTAR girilmemiş; video otomasyonu henüz kurulmadı.')
-            return 0
+        os.environ.setdefault('GUNDEM_URL', 'https://gundem-sitesi.vitrin-web.workers.dev')
         s, _, g = site('/api/video/sira', method='POST')
         d = jsonla(g)
         if s != 200:

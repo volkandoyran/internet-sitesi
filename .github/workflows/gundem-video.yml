@@ -18,46 +18,37 @@ on:
 
 concurrency: { group: gundem-video, cancel-in-progress: false }
 
+# Siteye kimliğini GitHub'ın imzalı jetonuyla (OIDC) kanıtlar; gizli anahtar girmek gerekmez.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   video:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       KURU: ${{ github.event_name == 'pull_request' && '1' || inputs.kuru || '0' }}
-      GUNDEM_URL: ${{ vars.GUNDEM_URL }}
+      GUNDEM_URL: ${{ vars.GUNDEM_URL || 'https://gundem-sitesi.vitrin-web.workers.dev' }}
       VIDEO_ANAHTAR: ${{ secrets.VIDEO_ANAHTAR }}
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
       IG_USER_ID: ${{ secrets.IG_USER_ID }}
       IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      IG_GRAPH: ${{ vars.IG_GRAPH }}
       PIPER_SES: ${{ vars.PIPER_SES || 'tr_TR-dfki-medium' }}
     steps:
-      - name: Kurulum yapılmış mı
-        id: kontrol
-        run: |
-          if [ "$KURU" != "1" ] && { [ -z "$GUNDEM_URL" ] || [ -z "$VIDEO_ANAHTAR" ]; }; then
-            echo "::notice::GUNDEM_URL değişkeni ve VIDEO_ANAHTAR gizli anahtarı girilmemiş; video otomasyonu bekliyor (gundem-sitesi/video/README.md)."
-            echo "calis=0" >> "$GITHUB_OUTPUT"
-          else
-            echo "calis=1" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/checkout@v4
-        if: steps.kontrol.outputs.calis == '1'
       - uses: actions/setup-python@v5
-        if: steps.kontrol.outputs.calis == '1'
         with: { python-version: '3.11' }
       - name: FFmpeg ve yazı tipi
-        if: steps.kontrol.outputs.calis == '1'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
       - name: Piper (ücretsiz Türkçe seslendirme)
-        if: steps.kontrol.outputs.calis == '1'
         run: pip install -q piper-tts==1.2.0
       - uses: actions/cache@v4
-        if: steps.kontrol.outputs.calis == '1'
         with: { path: ~/piper, key: "piper-${{ env.PIPER_SES }}" }
       - name: Türkçe ses modeli
-        if: steps.kontrol.outputs.calis == '1'
         run: |
           mkdir -p ~/piper && cd ~/piper
           IFS=- read -r DIL KISI KALITE <<< "$PIPER_SES"
@@ -66,8 +57,7 @@ jobs:
           [ -f "$PIPER_SES.onnx.json" ] || curl -fsSL -o "$PIPER_SES.onnx.json" "$TABAN.onnx.json"
           echo "PIPER_MODEL=$HOME/piper/$PIPER_SES.onnx" >> "$GITHUB_ENV"
       - name: Video üret ve paylaş
-        if: steps.kontrol.outputs.calis == '1'
         run: python3 gundem-sitesi/video/uret.py
       - uses: actions/upload-artifact@v4
-        if: steps.kontrol.outputs.calis == '1' && always()
+        if: always()
         with: { name: video, path: video.mp4, if-no-files-found: ignore, retention-days: 3 }
