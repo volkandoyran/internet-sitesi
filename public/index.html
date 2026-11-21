@@ -39,8 +39,9 @@
 
     <nav class="tabs" aria-label="Bölümler">
       <button type="button" data-bolum="bilgisayar" aria-pressed="true">Bilgisayarlar</button>
-      <button type="button" data-bolum="parca" aria-pressed="false">Masaüstü parçaları</button>
-      <button type="button" data-bolum="mobil" aria-pressed="false">Telefon ve tablet</button>
+      <button type="button" data-bolum="parca" aria-pressed="false">Bilgisayar parçaları</button>
+      <button type="button" data-bolum="telefon" aria-pressed="false">Telefonlar</button>
+      <button type="button" data-bolum="tablet" aria-pressed="false">Tabletler</button>
     </nav>
 
     <form id="search" class="search" autocomplete="off">
@@ -53,21 +54,30 @@
       <details class="filter-box" open>
       <summary>Filtreler</summary>
       <div class="filters">
-        <label data-for="computer device">Tür
+        <label data-for="computer">Tür
           <select name="type"></select>
         </label>
         <label data-for="part" hidden>Parça türü
           <select name="category">
             <option value="">Hepsi</option>
-            <option value="cpu">İşlemci</option>
-            <option value="gpu">Ekran kartı</option>
-            <option value="ram">RAM</option>
-            <option value="ssd">SSD</option>
-            <option value="hdd">Sabit disk</option>
-            <option value="anakart">Anakart</option>
-            <option value="psu">Güç kaynağı</option>
-            <option value="kasa">Kasa</option>
-            <option value="monitor">Monitör</option>
+            <optgroup label="Masaüstü ve ortak">
+              <option value="cpu">İşlemci</option>
+              <option value="gpu">Ekran kartı</option>
+              <option value="ram">RAM (masaüstü ve laptop)</option>
+              <option value="ssd">SSD</option>
+              <option value="hdd">Sabit disk</option>
+              <option value="anakart">Anakart</option>
+              <option value="psu">Güç kaynağı</option>
+              <option value="kasa">Kasa</option>
+              <option value="monitor">Monitör</option>
+            </optgroup>
+            <optgroup label="Laptop parçaları">
+              <option value="laptop-batarya">Laptop bataryası</option>
+              <option value="laptop-adaptor">Laptop adaptörü</option>
+              <option value="laptop-ekran">Laptop ekranı</option>
+              <option value="laptop-klavye">Laptop klavyesi</option>
+              <option value="laptop-fan">Laptop fanı</option>
+            </optgroup>
           </select>
         </label>
         <label>En fazla bütçe

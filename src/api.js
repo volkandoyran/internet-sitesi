@@ -92,7 +92,7 @@ async function search(env, sp) {
   // Metindeki özellikler (ör. "16gb rtx 4060") boş filtreleri doldurur
   const parsed = parseQuery(q);
   // Sitedeki bölüm seçiliyse metinden çıkan tür o bölümün dışına çıkamaz (bilgisayar bölümünde "iphone" telefon getirmez)
-  const ALLOWED = { bilgisayar: ['laptop', 'desktop'], parca: [], mobil: ['phone', 'tablet'] }[sp.get('bolum')];
+  const ALLOWED = { bilgisayar: ['laptop', 'desktop'], parca: [], telefon: ['phone'], tablet: ['tablet'], mobil: ['phone', 'tablet'] }[sp.get('bolum')];
   if (ALLOWED && parsed.type && !ALLOWED.includes(parsed.type)) delete parsed.type;
   for (const k of Object.keys(parsed)) if (!filters[k]) filters[k] = parsed[k];
   // Tür seçilmediyse yalnızca hazır bilgisayarlar (laptop ve masaüstü) aranır; "all" her şeyi getirir
