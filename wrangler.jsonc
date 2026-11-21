@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ucfiyat",
+  "name": "internet-sitesi",
   "main": "src/worker.js",
   "compatibility_date": "2026-11-21",
   "assets": {
@@ -12,11 +12,12 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ucfiyat-db",
-      // Yayınlama iş akışı bu değeri otomatik doldurur
-      "database_id": "BURAYA_D1_KIMLIGI"
+      // database_id yok: ilk yayında Cloudflare veritabanını otomatik oluşturur
+      "database_name": "ucfiyat-db"
     }
   ],
+  // schema.sql metin olarak içe aktarılır, tablolar ilk istekte otomatik kurulur
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "observability": {
     "enabled": true,
     "traces": { "enabled": true }

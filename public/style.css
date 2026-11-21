@@ -21,7 +21,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
 body {
   margin: 0; background: var(--paper); color: var(--ink);
   font: 400 16px/1.5 'Archivo', system-ui, sans-serif;
@@ -30,7 +30,8 @@ a { color: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-.top, main, .foot, .ad-slot { max-width: 1080px; margin: 0 auto; padding-inline: 16px; }
+.top, main, .foot, .ad-slot { max-width: 1080px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
+.foot { padding-bottom: max(32px, env(safe-area-inset-bottom)); }
 .top { display: flex; align-items: center; justify-content: space-between; padding-block: 18px; }
 .logo { display: flex; align-items: center; gap: 10px; text-decoration: none;
   font-weight: 800; font-variation-settings: var(--wide); font-size: 20px; letter-spacing: -.01em; }
@@ -41,7 +42,7 @@ a { color: inherit; }
 .logo-mark .bg { background: var(--bg); width: 86%; }
 .cur { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .cur button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 700;
-  padding: 6px 14px; cursor: pointer; }
+  padding: 0 16px; min-height: 40px; min-width: 44px; cursor: pointer; }
 .cur button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 
 .intro { padding: 28px 0 8px; }
@@ -61,11 +62,12 @@ a { color: inherit; }
   font: inherit; font-weight: 700; padding: 0 22px; border: 0; border-radius: 10px;
   background: var(--ink); color: var(--paper); cursor: pointer; white-space: nowrap;
 }
+.filter-box > summary { display: none; }
 .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; margin-top: 14px; }
 .filters label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .filters select, .filters input {
-  font: inherit; font-size: 15px; color: var(--ink); background: var(--card);
-  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%;
+  font: inherit; font-size: 16px; color: var(--ink); background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; min-height: 44px; width: 100%;
 }
 .money { position: relative; display: block; }
 .money b { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); }
@@ -107,7 +109,7 @@ a { color: inherit; }
 .offers td.num { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
 .offers .out { color: var(--muted); text-decoration: line-through; }
 .mini { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.mini button { font: inherit; font-size: 13px; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; }
+.mini button { font: inherit; font-size: 14px; min-height: 44px; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; }
 .mini b { font-variant-numeric: tabular-nums; }
 
 .ad-slot { margin-block: 16px; text-align: center; }
@@ -118,9 +120,21 @@ a { color: inherit; }
 .foot p { max-width: 75ch; }
 
 @media (max-width: 720px) {
-  .item { grid-template-columns: 1fr; gap: 14px; }
+  .item { grid-template-columns: 1fr; gap: 14px; padding: 14px; }
   .q { flex-direction: column; }
-  .q button { padding: 12px; }
+  .q button { padding: 14px; }
+  .intro { padding-top: 12px; }
+  .intro p { font-size: 16px; }
+  /* Telefonda filtreler açılır kutuda */
+  .filter-box > summary {
+    display: flex; justify-content: space-between; align-items: center; min-height: 44px; margin-top: 10px;
+    font-weight: 700; cursor: pointer; list-style: none; border-bottom: 1px solid var(--line);
+  }
+  .filter-box > summary::-webkit-details-marker { display: none; }
+  .filter-box > summary::after { content: '+'; font-size: 22px; font-weight: 400; }
+  .filter-box[open] > summary::after { content: '−'; }
+  .offers { font-size: 13px; }
+  .offers th:nth-child(4), .offers td:nth-child(4), .offers th:nth-child(6), .offers td:nth-child(6) { display: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .fill { transition: width .5s cubic-bezier(.2, .7, .2, 1); }

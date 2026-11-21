@@ -131,8 +131,18 @@ $('#search').addEventListener('submit', (e) => { e.preventDefault(); search(); }
 $('#search').addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') search(); });
 document.querySelectorAll('.cur button').forEach((b) => b.addEventListener('click', () => setCurrency(b.dataset.cur)));
 
+// Telefonda filtreler kapalı başlar (seçili filtre varsa açık kalır)
+const narrow = matchMedia('(max-width: 720px)').matches;
+
 // Adres çubuğundaki aramayı geri yükle
 const init = new URLSearchParams(location.search);
 for (const [k, v] of init) { const f = $('#search').elements[k]; if (f) f.value = v; }
 if (init.get('cur') === 'TRY') currency = 'TRY';
+if (narrow && ![...init.keys()].some((k) => k !== 'q' && k !== 'cur')) $('.filter-box').open = false;
+// Telefonda arama yapınca klavyeyi kapat ve sonuçlara kaydır
+$('#search').addEventListener('submit', () => {
+  if (!narrow) return;
+  $('#q').blur();
+  setTimeout(() => $('#note').hidden ? $('#results').scrollIntoView({ behavior: 'smooth', block: 'start' }) : $('#note').scrollIntoView({ behavior: 'smooth' }), 300);
+});
 loadAds().then(search).then(() => setCurrency(currency));

@@ -8,21 +8,18 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 - `/admin` adresinde yönetim paneli: ürün, satıcı bağlantısı, elle fiyat, satıcı açma/kapama, reklam kodları
 - Hazır reklam alanları (üst, liste içi, alt, `<head>` kodu ve `ads.txt`)
 
-Tamamen ücretsiz katmanlarda çalışır: Cloudflare Workers (site + API, statik dosyalar dahil), Cloudflare D1 (veritabanı), GitHub Actions (yayınlama ve günlük fiyat çekme).
+Tamamen ücretsiz katmanlarda çalışır: Cloudflare Workers (site + API, statik dosyalar dahil, GitHub'dan otomatik yayın), Cloudflare D1 (veritabanı), GitHub Actions (testler ve günlük fiyat çekme).
 
 ## Kurulum (bir kez)
 
-1. **Cloudflare hesap kimliği:** [dash.cloudflare.com](https://dash.cloudflare.com) → sağ alttaki *Account ID* değerini kopyalayın.
-2. **Cloudflare API anahtarı:** *My Profile → API Tokens → Create Token → Create Custom Token*. İzinler:
-   - Account → **Workers Scripts** → Edit
-   - Account → **D1** → Edit
-   - Account → **Account Settings** → Read
-3. **GitHub gizli anahtarları:** bu depoda *Settings → Secrets and variables → Actions → New repository secret*:
-   - `CLOUDFLARE_ACCOUNT_ID` = 1. adımdaki kimlik
-   - `CLOUDFLARE_API_TOKEN` = 2. adımdaki anahtar
-   - `ADMIN_PASSWORD` = yönetim paneli şifresi (uzun ve tahmin edilemez olsun)
-4. *Actions → Siteyi yayınla → Run workflow* (ya da `main`'e her gönderimde kendiliğinden çalışır). Veritabanı ilk çalıştırmada otomatik oluşturulur. Site `https://ucfiyat.<hesap-alt-alanınız>.workers.dev` adresinde açılır; tam adres iş akışı kaydının sonunda yazar.
-5. İsteğe bağlı: kendi alan adınızı Cloudflare panelinde *Workers → ucfiyat → Settings → Domains* bölümünden bağlayabilirsiniz. O zaman *Settings → Secrets and variables → Actions → Variables* altında `SITE_URL` değişkenine yeni adresi yazın. Worker adını değiştirmek için `PROJECT_NAME` değişkenini kullanın.
+Site, Cloudflare'in GitHub bağlantısıyla (Workers Builds) yayınlanır: `main` dalına her gönderimde Cloudflare siteyi kendisi derleyip yayınlar. İlk yayında D1 veritabanı otomatik oluşturulur, tablolar ve 15 satıcı ilk ziyarette otomatik kurulur.
+
+1. **Cloudflare'de admin şifresi:** Cloudflare paneli → *Workers & Pages → internet-sitesi → Settings → Variables and Secrets → Add*. Tür **Secret**, ad `ADMIN_PASSWORD`, değer olarak uzun ve tahmin edilemez bir şifre girin.
+2. **GitHub'da fiyat çekici ayarları:** bu depoda *Settings → Secrets and variables → Actions*:
+   - *Secrets* sekmesi → `ADMIN_PASSWORD` = 1. adımdaki şifrenin aynısı
+   - *Variables* sekmesi → `SITE_URL` = sitenin adresi (ör. `https://internet-sitesi.<hesabınız>.workers.dev`, Cloudflare panelinde Worker sayfasının üstünde yazar)
+
+Worker adı `wrangler.jsonc` içindeki `name` ile Cloudflare panelindeki Worker adı aynı olmalıdır (`internet-sitesi`). Kendi alan adınızı *Settings → Domains & Routes* bölümünden bağlayabilirsiniz; o zaman `SITE_URL`'yi de güncelleyin.
 
 ## Günlük kullanım
 
@@ -66,4 +63,4 @@ npm test
 | `wrangler.jsonc` | Cloudflare Worker ayarları |
 | `lib/specs.js` | İşlemci/ekran kartı puanları, benzer ürün hesabı |
 | `scraper/` | Günlük fiyat çekici (JSON-LD ve meta etiketlerinden fiyat okur) |
-| `schema.sql` | Veritabanı şeması ve 15 başlangıç satıcısı |
+| `schema.sql` | Veritabanı şeması ve 15 başlangıç satıcısı (Worker ilk istekte kendisi çalıştırır) |

@@ -1,6 +1,19 @@
 // Worker giriş noktası: /api/* ve /ads.txt burada işlenir, diğer her şey public/ klasöründen sunulur.
 // Ana sayfaya admin panelinden girilen <head> kodu (ör. AdSense) eklenir.
 import { handleApi } from './api.js';
+import SCHEMA from '../schema.sql';
+
+// Tablolar yoksa schema.sql'i çalıştırır (ilk yayından sonraki ilk istekte bir kez)
+let ready = null;
+function ensureSchema(env) {
+  ready ||= (async () => {
+    const t = await env.DB.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'").first();
+    if (t) return;
+    const stmts = SCHEMA.replace(/--[^\n]*/g, '').split(';').map((x) => x.trim()).filter(Boolean);
+    await env.DB.batch(stmts.map((q) => env.DB.prepare(q)));
+  })().catch((e) => { ready = null; throw e; });
+  return ready;
+}
 
 async function setting(env, key) {
   try {
@@ -14,6 +27,7 @@ async function setting(env, key) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    await ensureSchema(env);
     if (url.pathname.startsWith('/api/')) {
       return handleApi(request, env, url.pathname.slice(5).split('/').filter(Boolean));
     }

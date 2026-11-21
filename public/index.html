@@ -2,7 +2,14 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#10161d" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-title" content="Üçfiyat">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <title>Üçfiyat · Türkiye, Yunanistan, Bulgaristan bilgisayar fiyatları</title>
   <meta name="description" content="Laptop, masaüstü ve bilgisayar parçalarının Türkiye, Yunanistan ve Bulgaristan'daki mağazalı satıcılardaki fiyatlarını karşılaştırın.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,9 +40,11 @@
     <form id="search" class="search" autocomplete="off">
       <div class="q">
         <label for="q" class="sr">Model ya da özellik</label>
-        <input id="q" name="q" type="search" placeholder="ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”">
+        <input id="q" name="q" type="search" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”">
         <button type="submit">Fiyatları bul</button>
       </div>
+      <details class="filter-box" open>
+      <summary>Filtreler</summary>
       <div class="filters">
         <label>Tür
           <select name="type">
@@ -75,6 +84,7 @@
           <select name="country"><option value="">Herhangi biri</option><option value="TR">Türkiye</option><option value="GR">Yunanistan</option><option value="BG">Bulgaristan</option></select>
         </label>
       </div>
+      </details>
     </form>
 
     <p id="note" class="note" hidden></p>

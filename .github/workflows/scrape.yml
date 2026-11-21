@@ -11,20 +11,16 @@ jobs:
     timeout-minutes: 60
     env:
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       SITE_URL: ${{ vars.SITE_URL }}
-      PROJECT: ${{ vars.PROJECT_NAME || 'ucfiyat' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Site adresini bul
-        if: env.SITE_URL == ''
+      - name: Ayarları kontrol et
         run: |
-          SUB=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
-            | node -e "console.log(JSON.parse(require('fs').readFileSync(0)).result.subdomain)")
-          echo "SITE_URL=https://$PROJECT.$SUB.workers.dev" >> "$GITHUB_ENV"
+          if [ -z "$SITE_URL" ] || [ -z "$ADMIN_PASSWORD" ]; then
+            echo "::error::Depo ayarlarında SITE_URL değişkeni ve ADMIN_PASSWORD gizli anahtarı gerekli. README'deki kurulum adımlarına bakın."
+            exit 1
+          fi
       - name: Fiyatları çek
         run: node scraper/scrape.mjs
