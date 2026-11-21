@@ -21,13 +21,40 @@ function setCurrency(c) {
 $$('.cur button').forEach((b) => b.addEventListener('click', () => setCurrency(b.dataset.cur)));
 setCurrency(currency);
 
-// Eşleşen modeller: bölüm süzgeci
+// Eşleşen modeller: bölüm ve alt tür süzgeci (adres çubuğunda saklanır: ?bolum=parca&tur=gpu)
 const list = $('#list');
 if (list) {
-  $$('[data-filter]').forEach((b) => b.addEventListener('click', () => {
-    $$('[data-filter]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    for (const li of list.children) li.hidden = !!b.dataset.filter && li.dataset.bolum !== b.dataset.filter;
-  }));
+  const params = new URLSearchParams(location.search);
+  let bolum = params.get('bolum') || '';
+  let tur = params.get('tur') || '';
+  if (!$$('[data-filter]').some((b) => b.dataset.filter === bolum && !b.disabled)) { bolum = ''; tur = ''; }
+  function apply() {
+    $$('[data-filter]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.filter === bolum)));
+    $$('.subtabs').forEach((box) => {
+      box.hidden = box.dataset.for !== bolum;
+      const subs = $$('[data-sub]', box);
+      if (!box.hidden && !subs.some((b) => b.dataset.sub === tur)) tur = '';
+      subs.forEach((b) => b.setAttribute('aria-pressed', String(!box.hidden && b.dataset.sub === tur)));
+    });
+    let n = 0;
+    $$('.group', list).forEach((g) => {
+      const on = !bolum || g.dataset.bolum === bolum;
+      g.hidden = !on;
+      for (const li of g.querySelectorAll('li.item')) {
+        const show = on && (!tur || li.dataset.sub === tur);
+        li.hidden = !show;
+        if (show) n++;
+      }
+    });
+    $('#count').textContent = n + ' ürün gösteriliyor';
+    const u = new URLSearchParams();
+    if (bolum) u.set('bolum', bolum);
+    if (bolum && tur) u.set('tur', tur);
+    history.replaceState(null, '', u.toString() ? '?' + u : location.pathname);
+  }
+  $$('[data-filter]').forEach((b) => b.addEventListener('click', () => { bolum = b.dataset.filter; tur = ''; apply(); }));
+  $$('.subtabs [data-sub]').forEach((b) => b.addEventListener('click', () => { tur = b.dataset.sub; apply(); }));
+  apply();
 }
 
 // Teknik özellikler: tür süzgeci, arama, sıralama (adres çubuğunda saklanır, paylaşılabilir)
