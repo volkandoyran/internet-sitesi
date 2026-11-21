@@ -73,7 +73,10 @@ async function loadProducts(env, where = '', binds = []) {
   return products.map((p) => {
     const list = (byProduct.get(p.id) || []).sort((a, b) => a.price_eur - b.price_eur);
     const inStock = list.filter((o) => o.in_stock !== 0);
-    return { ...p, offers: list, best: (inStock[0] || list[0]) || null };
+    // Eski kayıtlarda puan boş kalmış olabilir (ör. işlemci "M3"): adından yeniden hesaplanır
+    const cpu_score = p.cpu_score ?? (p.cpu ? cpuScore(p.cpu) : null);
+    const gpu_score = p.gpu_score ?? (p.gpu ? gpuScore(p.gpu) : null);
+    return { ...p, cpu_score, gpu_score, offers: list, best: (inStock[0] || list[0]) || null };
   }).filter((p) => p.offers.length); // fiyatı olmayan ürün sitede gösterilmez
 }
 
@@ -94,6 +97,8 @@ async function search(env, sp) {
   // Sitedeki bölüm seçiliyse metinden çıkan tür o bölümün dışına çıkamaz (bilgisayar bölümünde "iphone" telefon getirmez)
   const ALLOWED = { bilgisayar: ['laptop', 'desktop'], parca: [], telefon: ['phone'], tablet: ['tablet'], mobil: ['phone', 'tablet'] }[sp.get('bolum')];
   if (ALLOWED && parsed.type && !ALLOWED.includes(parsed.type)) delete parsed.type;
+  // Telefon/tablet aramasında işlemci ve ekran kartı puanı yoktur: metinden çıkan puan filtre olmasın
+  if (['phone', 'tablet'].includes(filters.type || parsed.type) || sp.get('bolum') === 'telefon' || sp.get('bolum') === 'tablet') { delete parsed.cpu_score; delete parsed.gpu_score; }
   for (const k of Object.keys(parsed)) if (!filters[k]) filters[k] = parsed[k];
   // Tür seçilmediyse yalnızca hazır bilgisayarlar (laptop ve masaüstü) aranır; "all" her şeyi getirir
   if (!filters.type) filters.type = 'computer';
@@ -111,17 +116,24 @@ async function search(env, sp) {
     typeOk(p) &&
     (!filters.category || p.category === filters.category) &&
     (!filters.ram_gb || (p.ram_gb || 0) >= filters.ram_gb) &&
-    (!filters.storage_gb || (p.storage_gb || 0) >= filters.storage_gb) &&
+    // 1 TB bazı kayıtlarda 1000, bazılarında 1024 GB: küçük fark eşleşmeyi bozmasın
+    (!filters.storage_gb || (p.storage_gb || 0) >= filters.storage_gb * 0.95) &&
     (!filters.cpu_score || (p.cpu_score ?? 0) >= filters.cpu_score) &&
     (!filters.gpu_score || (p.gpu_score ?? 0) >= filters.gpu_score);
   const budgetOk = (p) => !filters.budget || (priceIn(p) != null && priceIn(p) <= filters.budget);
 
   // Model adı eşleşmesi: tüm kelimeler isimde/markada/işlemcide geçmeli
   // Özellik kelimeleri (16gb, rtx, i7, laptop...) model adı eşleşmesinden çıkarılır
-  const SPEC_WORD = /^(\d+(gb|tb)|gb|tb|ram|ssd|nvme|hdd|ddr\d?|rtx|gtx|rx|i[3579]|ryzen|core|ultra|laptop|notebook|dizüstü|masaüstü|desktop|pc|telefon|tablet|\d{1,4})$/;
-  const words = q.toLocaleLowerCase('tr').split(/\s+/).filter((w) => w.length > 1 && !SPEC_WORD.test(w));
-  const hay = (p) => [p.name, p.brand, p.cpu, p.gpu].join(' ').toLocaleLowerCase('tr');
-  const nameHit = (p) => words.every((w) => hay(p).includes(w));
+  // Model numaraları ("iphone 17", "rtx 5070") eşleşmede kalır; yalnızca özellik kelimesinin hemen arkasındaki sayı (ör. "ryzen 7") atlanır.
+  const SPEC_WORD = /^(\d+(gb|tb)|gb|tb|ram|ssd|nvme|hdd|ddr\d?|(rtx|gtx|rx)\d{0,4}|i[3579](-\d+)?|ryzen|core|ultra|laptop|notebook|dizüstü|masaüstü|desktop|pc|telefon|tablet)$/;
+  // Türkçe küçük harfe çevirme "MSI"yi "msı" yapıyordu; ı/İ farkı yok sayılır
+  const low = (t) => String(t || '').replace(/İ/g, 'i').toLowerCase().replace(/ı/g, 'i');
+  const raw = low(q).split(/\s+/).filter(Boolean);
+  const words = raw.filter((w, i) => w.length > 1 && !SPEC_WORD.test(w) && !(/^\d{1,4}$/.test(w) && i > 0 && /^(ryzen|core|ultra|i[3579]|ram|ddr\d?|rtx|gtx|rx)$/.test(raw[i - 1])));
+  const hay = (p) => low([p.name, p.brand, p.cpu, p.gpu].join(' '));
+  // Sayılar tam sayı olarak aranır ("17" "170"e ya da "i7-1755"e takılmasın)
+  const hit = (h, w) => (/^\d+$/.test(w) ? new RegExp(`(^|\\D)${w}(\\D|$)`).test(h) : h.includes(w));
+  const nameHit = (p) => { const h = hay(p); return words.every((w) => hit(h, w)); };
   let exact = all.filter((p) => (!words.length || nameHit(p)) && specOk(p) && budgetOk(p));
   exact.sort((a, b) => (priceIn(a) ?? 1e12) - (priceIn(b) ?? 1e12));
 
@@ -130,11 +142,12 @@ async function search(env, sp) {
   let note = null;
   if (!exact.length) {
     const partial = words.length
-      ? all.filter((p) => words.some((w) => w.length > 2 && hay(p).includes(w)))
+      ? all.filter((p) => words.some((w) => w.length > 2 && hit(hay(p), w)))
       : [];
     const anchor = partial[0] || { ...filters, type: GROUPS[filters.type] ? GROUPS[filters.type][0] : filters.type };
     similar = all
-      .filter((p) => budgetOk(p) && typeOk(p) && (!filters.category || p.category === filters.category))
+      .filter((p) => budgetOk(p) && typeOk(p) && (!filters.category || p.category === filters.category)
+        && (!partial[0] || partial[0].type !== 'part' || p.category === partial[0].category))
       .map((p) => ({ p, d: distance(anchor, p) - (partial.includes(p) ? 1 : 0) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, 12)
@@ -151,7 +164,7 @@ async function productDetail(env, id) {
   const p = all.find((x) => x.id === id);
   if (!p) return fail('Ürün bulunamadı', 404);
   const similar = all
-    .filter((x) => x.id !== id && x.type === p.type && x.offers.length)
+    .filter((x) => x.id !== id && x.type === p.type && (p.type !== 'part' || x.category === p.category) && x.offers.length)
     .map((x) => ({ x, d: distance(p, x) }))
     .sort((a, b) => a.d - b.d)
     .slice(0, 6)
@@ -361,6 +374,7 @@ async function catalogUpsert(env, body) {
   if (stmts.length) await env.DB.batch(stmts.splice(0));
   const all = await retailers(env);
   const known = new Set(all.map((r) => r.id));
+  const currencyOf = new Map(all.map((r) => [r.id, r.currency]));
   const hidden = new Set(all.filter((r) => !r.active).map((r) => r.id));
   const now = new Date().toISOString();
   const out = { added: 0, updated: 0, removed: 0, errors: 0, linked: 0 };
@@ -383,7 +397,8 @@ async function catalogUpsert(env, body) {
       out.errors++;
       continue;
     }
-    const currency = it.currency || 'EUR';
+    // Sayfada para birimi yazmıyorsa mağazanınki kullanılır (TR mağazası fiyatı euro sanılmasın)
+    const currency = it.currency || currencyOf.get(it.retailer_id) || 'EUR';
     const rate = currency === 'EUR' ? 1 : (body.rates || {})[currency] || (await rateFor(env, currency));
     if (!rate) { out.errors++; continue; }
     const eur = Math.round((it.price / rate) * 100) / 100;
@@ -393,6 +408,9 @@ async function catalogUpsert(env, body) {
         env.DB.prepare('UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, last_error = NULL, updated_at = ? WHERE id = ?')
           .bind(it.price, currency, eur, it.in_stock === false ? 0 : 1, now, offer.id),
         env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(offer.id, eur),
+        // Sınıflandırma/özellik kuralları düzeltildiyse eski kayıt da düzelsin
+        // (ör. "DESKTOP ... CORE I5" işlemci sanılmıştı, "RTX 4070 8GB" RAM 8 GB sanılmıştı)
+        ...(it.type ? [refreshProduct(env, offer.product_id, it)] : []),
       ]);
       out.updated++;
       continue;
@@ -425,6 +443,13 @@ async function catalogUpsert(env, body) {
     }
   }
   return { ok: true, ...out };
+}
+
+function refreshProduct(env, id, it) {
+  const p = cleanProduct(it);
+  const cols = ['cpu', 'cpu_score', 'gpu', 'gpu_score', 'ram_gb', 'storage_gb', 'screen_in'];
+  return env.DB.prepare(`UPDATE products SET type = ?, category = ?, ${cols.map((c) => `${c} = COALESCE(?, ${c})`).join(', ')} WHERE id = ?`)
+    .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), id);
 }
 
 async function loadAllAdmin(env) {

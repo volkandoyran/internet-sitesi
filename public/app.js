@@ -11,7 +11,8 @@ function money(eur) {
   if (currency === 'TRY' && rateTRY) return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(eur * rateTRY);
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(eur);
 }
-const storage = (gb) => (gb >= 1024 ? `${+(gb / 1024).toFixed(1)} TB` : `${gb} GB`);
+// Katalog 1 TB'yi 1000 GB olarak saklar (elle girilenler 1024 olabilir)
+const storage = (gb) => (gb >= 1000 ? `${+(gb / (gb % 1024 === 0 ? 1024 : 1000)).toFixed(1)} TB` : `${gb} GB`);
 const CATEGORY = { 'laptop-batarya': 'Laptop bataryası', 'laptop-adaptor': 'Laptop adaptörü', 'laptop-ekran': 'Laptop ekranı', 'laptop-klavye': 'Laptop klavyesi', 'laptop-fan': 'Laptop fanı', cpu: 'İşlemci', gpu: 'Ekran kartı', ram: 'RAM', ssd: 'SSD', hdd: 'Sabit disk', anakart: 'Anakart', psu: 'Güç kaynağı', kasa: 'Kasa', monitor: 'Monitör' };
 function specChips(p) {
   return [p.cpu, p.gpu, p.ram_gb && `${p.ram_gb} GB RAM`, p.storage_gb && storage(p.storage_gb),
@@ -82,11 +83,15 @@ async function search() {
   const fd = new FormData($('#search'));
   const params = new URLSearchParams();
   for (const [k, v] of fd) if (v) params.set(k, v);
-  if (params.get('budget') && currency === 'TRY') params.set('cur', 'TRY');
+  // Bütçenin para birimi adreste her zaman yazılır: paylaşılan bağlantı başka para birimi seçmiş kişide yanlış okunmasın
+  if (params.get('budget')) params.set('cur', currency);
   history.replaceState(null, '', params.toString() ? `?${params}` : '/');
-  // Bütçe ₺ girildiyse euroya çevir
   params.delete('cur');
-  if (params.get('budget') && currency === 'TRY' && rateTRY) params.set('budget', String(Math.round(+params.get('budget') / rateTRY)));
+  // Bütçe ₺ girildiyse euroya çevir; kur bilinmiyorsa ₺ tutarı euro sanılmasın diye bütçe gönderilmez
+  if (params.get('budget') && currency === 'TRY') {
+    if (rateTRY) params.set('budget', String(Math.round(+params.get('budget') / rateTRY)));
+    else params.delete('budget');
+  }
   $('#results').innerHTML = '<li class="empty">Aranıyor…</li>';
   const data = await fetch(`/api/products?${params}`).then((r) => r.json()).catch(() => null);
   if (!data || data.error) { $('#results').innerHTML = '<li class="empty">Sonuçlar yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.</li>'; return; }
@@ -107,7 +112,12 @@ function draw() {
 }
 
 function setCurrency(c) {
+  const prev = currency;
   currency = c === 'TRY' && !rateTRY ? 'EUR' : c;
+  // Girilmiş bütçe yeni para birimine çevrilir (30.000 ₺ -> yaklaşık 540 €), sonuçlar aynı kalır
+  const b = $('#search').elements.budget;
+  if (b.value && prev !== currency && rateTRY) b.value = String(Math.round(currency === 'TRY' ? +b.value * rateTRY : +b.value / rateTRY));
+  if (b.value) { const u = new URLSearchParams(location.search); u.set('budget', b.value); u.set('cur', currency); history.replaceState(null, '', `?${u}`); }
   try { localStorage.setItem('cur', currency); } catch {}
   document.querySelectorAll('.cur button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cur === currency)));
   document.querySelectorAll('.cur-sign').forEach((b) => (b.textContent = currency === 'TRY' ? '₺' : '€'));
@@ -174,7 +184,9 @@ const init = new URLSearchParams(location.search);
 const startType = init.get('type');
 setSection(({ mobil: startType === 'tablet' ? 'tablet' : 'telefon' })[init.get('bolum')] || init.get('bolum') || ({ part: 'parca', phone: 'telefon', tablet: 'tablet' }[startType]) || 'bilgisayar');
 for (const [k, v] of init) { const f = $('#search').elements[k]; if (f && k !== 'bolum') f.value = v; }
-if (init.get('cur') === 'TRY') currency = 'TRY';
+// Adreste bütçe varsa para birimi adresten gelir (yoksa euro), kişinin kayıtlı seçimi değil
+if (init.get('budget')) currency = init.get('cur') === 'TRY' ? 'TRY' : 'EUR';
+else if (init.get('cur') === 'TRY') currency = 'TRY';
 if (narrow && ![...init.keys()].some((k) => !['q', 'cur', 'bolum', 'type'].includes(k))) $('.filter-box').open = false;
 // Telefonda arama yapınca klavyeyi kapat ve sonuçlara kaydır
 $('#search').addEventListener('submit', () => {
