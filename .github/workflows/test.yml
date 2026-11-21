@@ -15,3 +15,4 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npx wrangler deploy --dry-run
+      - run: npx wrangler deploy --dry-run -c gundem-sitesi/wrangler.jsonc
