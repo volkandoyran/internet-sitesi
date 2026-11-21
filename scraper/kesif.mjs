@@ -1,55 +1,38 @@
-// Keşif: mağazaların site haritası ve kategori yapısını GitHub sunucularından inceler.
-// Çıktı: kesif/<magaza>.txt (Actions artifact olarak yüklenir)
-import { mkdirSync, writeFileSync } from 'node:fs';
+// Keşif 2: site haritası URL desenleri ve fiyat işaretlemesi
+import { gunzipSync } from 'node:zlib';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
-const STORES = {
-  pckolik: ['https://pckolik.com.tr', 'https://pckolik.com.tr/urun/amd-ryzen-7-7800x3d-tray-4-2-ghz-8-cekirdek-96mb-am5-5nm-islemci--100-100000910'],
-  'eshop-gr': ['https://www.e-shop.gr', 'https://www.e-shop.gr/cpu-amd-ryzen-7-7800x3d-420ghz-8-core-boxed-p-PER.208331'],
-  cosmodata: ['https://www.cosmodata.gr', 'https://www.cosmodata.gr/product/397719/hardware-anavathmisi/vasiko-pc-hardware/epexergastes-cpu/epexergastis-amd-ryzen-7-7800x3d-4-2ghz-8-cores-am5-96mb'],
-  'mediamarkt-gr': ['https://www.mediamarkt.gr', 'https://www.mediamarkt.gr/category/laptop-tablet-computing/desktop-all-in-one/gaming-desktop'],
-  jarcomputers: ['https://www.jarcomputers.com', 'https://www.jarcomputers.com/amd-ryzen-7-7800x3d-100-100000910wof-prod-cpup100100000910wof.html'],
-  technomarket: ['https://www.technomarket.bg', 'https://www.technomarket.bg/laptopi/macbook-air-13-6-m4-starlight-mw0y3ze-a-09227987'],
-  'laptop-bg': ['https://laptop.bg', 'https://laptop.bg/laptops'],
-};
 async function get(url) {
-  try {
-    const r = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'tr,el;q=0.8,bg;q=0.7,en;q=0.5' }, redirect: 'follow', signal: AbortSignal.timeout(25000) });
-    return { status: r.status, url: r.url, text: await r.text() };
-  } catch (e) { return { status: 0, text: '', err: e.message }; }
+  const r = await fetch(url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(60000) });
+  const buf = Buffer.from(await r.arrayBuffer());
+  const text = (url.endsWith('.gz') || buf[0] === 0x1f) ? gunzipSync(buf).toString() : buf.toString();
+  return { status: r.status, text };
 }
-const uniq = (a) => [...new Set(a)];
-const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
-mkdirSync('kesif', { recursive: true });
-for (const [id, [home, sample]] of Object.entries(STORES)) try {
-  const out = [];
-  const log = (...a) => out.push(a.join(' '));
-  const robots = await get(home + '/robots.txt');
-  log('# robots', robots.status);
-  const maps = uniq([...robots.text.matchAll(/^sitemap:\s*(\S+)/gim)].map((m) => m[1]));
-  if (!maps.length) maps.push(home + '/sitemap.xml');
-  for (const m of maps.slice(0, 4)) {
-    const s = await get(m);
-    const locs = [...s.text.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((x) => x[1]);
-    log('# sitemap', m, s.status, 'loc sayısı', locs.length);
-    locs.slice(0, 40).forEach((l) => log('  ', l));
-    const sub = locs.find((l) => /product|urun|prod|item|p-/i.test(l) && /\.xml/i.test(l));
-    if (sub) {
-      const ss = await get(sub);
-      const sl = [...ss.text.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((x) => x[1]);
-      log('## alt harita', sub, ss.status, sl.length); sl.slice(0, 15).forEach((l) => log('    ', l));
-    }
-  }
-  const h = await get(home);
-  log('# ana sayfa', h.status, h.url, 'uzunluk', h.text.length);
-  const links = uniq([...h.text.matchAll(/href=["']([^"'#]+)["']/g)].map((x) => x[1]));
-  links.filter((l) => /laptop|notebook|lapto|bilgisayar|komp|kompyut|компют|лаптоп|ypologist|pc|cpu|islemci|ekran|ssd|gpu|hardware|ram|anakart|epeksergast|karta|процесор|видео|monit/i.test(dec(l)))
-    .slice(0, 120).forEach((l) => log('  link', l));
-  const p = await get(sample);
-  log('# örnek', sample, p.status, 'uzunluk', p.text.length);
-  for (const [, j] of p.text.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) log('  ld+json', j.trim().replace(/\s+/g, ' ').slice(0, 1500));
-  for (const m of p.text.matchAll(/<meta[^>]+(?:product:|og:price|itemprop=["'](?:price|sku|mpn|gtin))[^>]*>/gi)) log('  meta', m[0].slice(0, 200));
-  const hrefs = uniq([...p.text.matchAll(/href=["']([^"'#]+)["']/g)].map((x) => x[1]));
-  log('  örnek sayfadaki bağlantı sayısı', hrefs.length); hrefs.slice(0, 80).forEach((l) => log('    a', l));
-  writeFileSync(`kesif/${id}.txt`, out.join('\n'));
-  console.log(id, robots.status, h.status, p.status);
-} catch (e) { console.log(id, 'HATA', e.message); }
+const locs = (t) => [...t.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((x) => x[1]);
+const count = (arr, f) => { const m = {}; for (const a of arr) { const k = f(a); m[k] = (m[k] || 0) + 1; } return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+// Technomarket: ilk yol parçası sayıları
+let tm = [];
+for (let i = 0; i < 4; i++) tm = tm.concat(locs((await get(`https://www.technomarket.bg/sitemap/${i}.xml`)).text));
+console.log('== technomarket toplam', tm.length);
+for (const [k, n] of count(tm, (u) => new URL(u).pathname.split('/')[1]).slice(0, 150)) console.log('  ', n, k);
+// JAR
+for (let i = 1; i <= 4; i++) {
+  const s = await get(`https://www.jarcomputers.com/export/google/sitemap-${i}.xml.gz`);
+  const l = locs(s.text);
+  console.log('== jar', i, s.status, l.length);
+  l.filter((u, j) => j % Math.max(1, Math.floor(l.length / 25)) === 0).forEach((u) => console.log('   ', u));
+  for (const [k, n] of count(l.filter((u) => u.includes('-prod-')), (u) => (u.match(/-prod-([a-z]+)/) || [])[1]?.slice(0, 4)).slice(0, 60)) console.log('   önek', n, k);
+}
+const jc = await get('https://www.jarcomputers.com/procesori-cat-15.html');
+console.log('== jar kategori', jc.status, jc.text.length, [...new Set([...jc.text.matchAll(/href="([^"]*-prod-[^"]*)"/g)].map((x) => x[1]))].length, 'ürün bağlantısı');
+console.log([...new Set([...jc.text.matchAll(/href="([^"]*(?:page|p=|\?)[^"]*)"/g)].map((x) => x[1]))].slice(0, 20).join('\n'));
+// e-shop
+const e1 = locs((await get('https://www.e-shop.gr/sitemap_products.phtml?page=1')).text);
+console.log('== eshop sayfa1', e1.length); for (const [k, n] of count(e1, (u) => (u.match(/-p-([A-Z]+)\./) || [])[1])) console.log('   ', n, k);
+const ep = (await get('https://www.e-shop.gr/cpu-amd-ryzen-7-7800x3d-420ghz-8-core-boxed-p-PER.208331')).text;
+for (const m of ep.matchAll(/.{0,250}(?:itemprop=["']price|309[.,]9|web_price|final_price).{0,250}/gi)) console.log('  eshop fiyat:', m[0].replace(/\s+/g, ' '));
+// cosmodata
+const cp = (await get('https://www.cosmodata.gr/product/397719/hardware-anavathmisi/vasiko-pc-hardware/epexergastes-cpu/epexergastis-amd-ryzen-7-7800x3d-4-2ghz-8-cores-am5-96mb')).text;
+for (const m of [...cp.matchAll(/.{0,200}(?:itemprop|price|€|τιμή).{0,200}/gi)].slice(0, 25)) console.log('  cosmo:', m[0].replace(/\s+/g, ' '));
+const cc = await get('https://www.cosmodata.gr/category/388/epexergastes-cpu/');
+console.log('== cosmo kategori', cc.status, [...new Set([...cc.text.matchAll(/href="([^"]*\/product\/[^"]*)"/g)].map((x) => x[1]))].length);
+console.log([...new Set([...cc.text.matchAll(/href="([^"]*(?:page|pg=)[^"]*)"/g)].map((x) => x[1]))].slice(0, 10).join('\n'));
