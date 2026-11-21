@@ -1,0 +1,22 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // Otomasyonun merkezi: gündem botu (zamanlanmış toplama + otomatik paylaşım) ve herkese açık haber sitesi.
+  "name": "gundem-sitesi",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-21",
+  // Yarım saatte bir toplar (ücretsiz planda Workers AI kotasına sığacak sıklık)
+  "triggers": { "crons": ["*/30 * * * *"] },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "gundem-db", "database_id": "1a86cdff-48b3-4444-959d-fd0f6a900b92" }
+  ],
+  // Sosyal medya metnini yazan model (ücretsiz katman: günde 10.000 nöron, bot ~5.000 kullanır)
+  "ai": { "binding": "AI" },
+  "vars": {
+    // "0" yapılırsa platform bağlı olsa bile paylaşım durur
+    "OTOMATIK_PAYLASIM": "1",
+    "SITE_ADI": "Gündem Özeti",
+    "SITE_ACIKLAMA": "Türkiye gündemindeki haberlerin kısa özetleri, her biri kaynağına bağlantılı."
+  },
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  "observability": { "enabled": true }
+}
