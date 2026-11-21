@@ -13,5 +13,7 @@ jobs:
         with: { node-version: 22 }
       - run: node scraper/kesif.mjs
       - if: always()
+        run: for f in kesif/*.txt; do echo "===== $f"; cat "$f"; done
+      - if: always()
         uses: actions/upload-artifact@v4
         with: { name: kesif, path: kesif/ }
