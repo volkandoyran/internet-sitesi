@@ -5,6 +5,8 @@
 //     çizilmez, "temsili" olarak etiketlenir). Ücretsiz kotayı korumak için çalışma başına sınırlı.
 // Hiçbiri olmazsa kapak.js'teki SVG kapak kullanılır.
 
+import { sehitMi } from './metin.js';
+
 const SAAT = 3600e3;
 const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
 export const gorselAyarlari = (env) => ({
@@ -91,7 +93,9 @@ export async function gorselleriDoldur(env, rapor = {}) {
   let ai = env.GORSEL ? a.aiLimit : 0;
   for (const h of results) {
     let sonuc = null;
-    try {
+    // Şehit haberlerinde yapay zekâ ya da başka kişinin fotoğrafı kullanılmaz; koyu yas kapağı gösterilir
+    if (sehitMi(h)) sonuc = { tur: 'yok', url: null, atif: null };
+    else try {
       const c = await env.AI.run(CIKARMA_MODEL, {
         messages: [{ role: 'system', content: CIKARMA_SISTEM }, { role: 'user', content: `Başlık: ${h.baslik}\nMetin: ${h.metin}` }],
         max_tokens: 120, temperature: 0.1,

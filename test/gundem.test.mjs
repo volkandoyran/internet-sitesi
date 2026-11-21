@@ -148,3 +148,24 @@ test('görsel: Wikipedia fotoğrafı yalnızca serbest lisans ve ad uyuşursa al
     assert.equal(await wikiFoto('Ali Veli'), null);
   } finally { globalThis.fetch = eski; }
 });
+
+// --- Şehit haberleri ---
+import { sehitMi, BASSAGLIGI, aiMetin } from '../gundem-sitesi/src/metin.js';
+
+test('şehit haberi: yaslı şablon, başsağlığı, koyu kapak, rozet', async () => {
+  const h = { id: 4, baslik: 'Pençe-Kilit bölgesinde 2 asker şehit oldu', ozet: 'MSB açıkladı.' };
+  assert.ok(sehitMi(h));
+  assert.equal(sehitMi({ baslik: 'Merkez Bankası faizi sabit tuttu' }), false);
+  const s = sablonMetin(h);
+  assert.match(s, /^Acı haber: Pençe-Kilit/);
+  assert.ok(s.endsWith(BASSAGLIGI));
+  const env = { AI: { run: async (_m, b) => { assert.match(b.messages[0].content, /şehit haberi/); return { response: 'Kahreden haber geldi; iki kahraman askerimiz şehit oldu. ' + BASSAGLIGI + ' #acı #asker' }; } } };
+  const m = await aiMetin(env, h);
+  assert.ok(m.endsWith(`${BASSAGLIGI} #şehit`));
+  assert.equal(m.split(BASSAGLIGI).length, 2);
+  const svg = kapakSvg({ ...h, kaynaklar: [] });
+  assert.match(svg, /ACI HABER/);
+  assert.match(svg, /#0b0b0c/);
+  const k = haberiCoz({ id: 4, baslik: h.baslik, metin: s, kaynaklar: '[]', kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  assert.match(haberKarti(k), /Acı haber<\/span>/);
+});

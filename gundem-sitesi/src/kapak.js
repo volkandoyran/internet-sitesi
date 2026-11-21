@@ -1,6 +1,7 @@
 // Haberler için otomatik kapak görseli (SVG). Telif riski olmaması için haber sitelerinin
 // fotoğrafları kullanılmaz; kapak, başlık + kaynak adı + site logosundan kodla üretilir.
 import { kac } from './sayfa.js';
+import { sehitMi } from './metin.js';
 
 // Koyu, okunaklı arka plan renkleri (beyaz yazıyla yeterli kontrast)
 const PALET = [
@@ -19,6 +20,7 @@ const KONU = [
 ];
 
 export function renk(h) {
+  if (sehitMi(h)) return ['#0b0b0c', '#2a2a2e'];
   const m = KONU.find(([r]) => r.test(h.baslik || ''));
   return PALET[m ? m[1] : Math.abs(Number(h.id) || 0) % PALET.length];
 }
@@ -50,18 +52,19 @@ export function kapakSvg(h) {
   const satirAra = Math.round(boy * 1.18);
   const ustY = 315 - ((satirlar.length - 1) * satirAra) / 2 + boy * 0.35;
   const kaynak = (h.kaynaklar || []).map((k) => k.ad).slice(0, 2).join(' · ');
-  const etiket = h.yabanci ? 'DÜNYA · ÇEVİRİ' : (h.kaynak_sayisi > 1 ? `${h.kaynak_sayisi} KAYNAKTA` : 'GÜNDEM');
+  const yas = sehitMi(h);
+  const etiket = yas ? 'ACI HABER' : h.yabanci ? 'DÜNYA · ÇEVİRİ' : (h.kaynak_sayisi > 1 ? `${h.kaynak_sayisi} KAYNAKTA` : 'GÜNDEM');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="${kac(h.baslik)}">
 <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${acik}"/><stop offset="1" stop-color="${koyu}"/></linearGradient>
 <pattern id="p" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.6" fill="#fff" fill-opacity=".07"/></pattern></defs>
 <rect width="1200" height="630" fill="url(#g)"/><rect width="1200" height="630" fill="url(#p)"/>
-<circle cx="1110" cy="-40" r="260" fill="#fff" fill-opacity=".06"/><circle cx="-60" cy="660" r="220" fill="#000" fill-opacity=".10"/>
+${yas ? `<g transform="translate(1040 170)" fill="none" stroke="#e8e8ea" stroke-width="18" stroke-linejoin="round" stroke-linecap="butt" opacity=".9"><path d="M -58 170 L 22 30 C 52 -24 30 -80 0 -80 C -30 -80 -52 -24 -22 30 L 58 170"/></g>` : `<circle cx="1110" cy="-40" r="260" fill="#fff" fill-opacity=".06"/><circle cx="-60" cy="660" r="220" fill="#000" fill-opacity=".10"/>`}
 <g font-family="Georgia,'Times New Roman',serif" fill="#fff">
 <rect x="80" y="64" width="${etiket.length * 13 + 36}" height="40" rx="20" fill="#fff" fill-opacity=".16"/>
 <text x="98" y="91" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="20" font-weight="700" letter-spacing="2">${kac(etiket)}</text>
 <text font-size="${boy}" font-weight="700">${satirlar.map((s, i) => `<tspan x="80" y="${Math.round(ustY + i * satirAra)}">${kac(s)}</tspan>`).join('')}</text>
 <rect x="80" y="520" width="1040" height="2" fill="#fff" fill-opacity=".35"/>
-<text x="80" y="570" font-size="34" font-weight="800">Gündem <tspan fill="#ffd7d2">Özeti</tspan></text>
+<text x="80" y="570" font-size="34" font-weight="800">Gündem <tspan fill="${yas ? '#d8d8dc' : '#ffd7d2'}">Özeti</tspan></text>
 <text x="1120" y="568" text-anchor="end" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="22" fill-opacity=".85">${kaynak ? `Kaynak: ${kac(kaynak)}` : ''}</text>
 </g></svg>`;
 }

@@ -1,6 +1,8 @@
 // Sunucuda üretilen HTML. Kaynak haberlerin metni kopyalanmaz: yalnızca başlık, botun yazdığı
 // kısa özet ve haberin alındığı yerin adı gösterilir (bağlantı verilmez).
 
+import { sehitMi } from './metin.js';
+
 export const kac = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const TZ = 'Europe/Istanbul';
@@ -49,7 +51,7 @@ article.haber h3 a:hover{text-decoration:underline}
 .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--soluk);margin-bottom:8px}
 .rozet{color:var(--vurgu);border:1px solid currentColor;border-radius:999px;padding:0 8px;font-weight:700;font-size:12px}
 p.ozet{margin:0 0 8px}.etiket{font-size:13px;color:var(--soluk);margin-right:6px}
-.kaynak{font-size:13.5px;color:var(--soluk)}.kaynak b{color:var(--yazi)}.rozet.ceviri{color:var(--soluk)}
+.kaynak{font-size:13.5px;color:var(--soluk)}.kaynak b{color:var(--yazi)}.rozet.ceviri{color:var(--soluk)}.rozet.yas{color:var(--yazi);background:var(--cizgi);border-color:var(--yazi)}
 .sayfala{display:flex;justify-content:space-between;margin:20px 0}
 .bos{text-align:center;color:var(--soluk);padding:60px 0}
 .detay h1{font:800 clamp(24px,5vw,34px)/1.2 Georgia,"Times New Roman",serif;margin:18px 0 10px}
@@ -87,7 +89,7 @@ function kaynakSatiri(h) {
 export function haberKarti(h, simdi) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<article class="haber"><a class="kapak" href="/haber/${h.id}" tabindex="-1" aria-hidden="true"><img src="/gorsel/${h.id}" alt="" loading="lazy" width="1200" height="630"></a><div class="icerik"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(goreli(h.zaman, simdi))}</time>
-${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
+${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}${sehitMi(h) ? '<span class="rozet yas">Acı haber</span>' : ''}</div>
 <h3><a href="/haber/${h.id}">${kac(h.baslik)}</a></h3>
 ${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
@@ -119,7 +121,7 @@ export function sayfalama(yol, sayfa, sonraki, ekParam = '') {
 export function detayGovde(h, atif = null) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<div class="detay"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(tamTarih(h.zaman))}</time>
-${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
+${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}${sehitMi(h) ? '<span class="rozet yas">Acı haber</span>' : ''}</div>
 <h1>${kac(h.baslik)}</h1><figure class="kapak-fig"><img class="kapak-buyuk" src="/gorsel/${h.id}" alt="${kac(h.baslik)}" width="1200" height="630">${atif ? `<figcaption>${kac(atif)}</figcaption>` : ''}</figure>${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
 <h2 class="bolum">Kaynak</h2>
