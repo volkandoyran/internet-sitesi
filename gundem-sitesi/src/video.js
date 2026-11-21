@@ -32,9 +32,21 @@ const HASSAS = [
 const kucuk = (s) => String(s || '').toLocaleLowerCase('tr-TR');
 const kelimeVar = (metin, k) => new RegExp(`(^|[^\\p{L}])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u').test(metin);
 
+// Şehit haberleri yas tonuyla işlenir (Volkan'ın isteği): sakin ses, siyah-gri görsel, taziye cümlesi, hashtag yok.
+const YAS = ['şehit', 'şehid', 'şehadet'];
+// Şehit haberlerinde doğal olarak geçen bu kelimeler haberi videodan düşürmez; siyaset ve diğerleri yine düşürür.
+const YAS_SERBEST = new Set(['terör', 'saldırı', 'operasyon', 'silah', 'öldür', 'bakan']);
+export const YAS_SOZU = "Başımız sağ olsun. Şehitlerimize Allah'tan rahmet, ailelerine sabır diliyoruz.";
+
+export function yasMi(h) {
+  const t = kucuk(`${h.baslik} ${h.metin || ''}`);
+  return YAS.some((k) => kelimeVar(t, k));
+}
+
 export function hassasMi(h) {
   const t = kucuk(`${h.baslik} ${h.metin || ''}`);
-  return HASSAS.some((k) => kelimeVar(t, kucuk(k)));
+  const yas = yasMi(h);
+  return HASSAS.some((k) => !(yas && YAS_SERBEST.has(k)) && kelimeVar(t, kucuk(k)));
 }
 
 const kaynakListesi = (h) => (Array.isArray(h.kaynaklar) ? h.kaynaklar : JSON.parse(h.kaynaklar || '[]'));
@@ -55,17 +67,21 @@ export function seslendirme(h) {
   const bas = h.baslik.trim();
   const parca = [nokta(bas)];
   if (govde && !kucuk(govde).startsWith(kucuk(bas).slice(0, 40))) parca.push(nokta(govde));
+  if (yasMi(h)) parca.push(YAS_SOZU);
   parca.push(`Kaynak: ${kaynakAdlari(h).join(', ')}.`);
   return parca.join(' ');
 }
 
 export function videoBasligi(h) {
   const b = h.baslik.trim();
-  return (b.length > 90 ? `${b.slice(0, 89).replace(/\s+\S*$/, '')}…` : b) + ' #Shorts';
+  return (b.length > 90 ? `${b.slice(0, 89).replace(/\s+\S*$/, '')}…` : b) + (yasMi(h) ? '' : ' #Shorts');
 }
 
 // Platform açıklaması: metin + kaynak adları + yapay zekâ notu. Bağlantı yok.
 export function videoAciklamasi(h) {
+  if (yasMi(h)) {
+    return [nokta(hashtagsiz(h.metin) || h.baslik), YAS_SOZU, `Kaynak: ${kaynakAdlari(h).join(', ')}`, 'Bu içerik yapay zekâ ile hazırlandı.'].join('\n\n');
+  }
   const etiketler = (String(h.metin || '').match(/#[\p{L}\p{N}_]+/gu) || []).slice(0, 2);
   return [
     nokta(hashtagsiz(h.metin) || h.baslik),
@@ -146,6 +162,7 @@ async function siradaki(env, tur = 'video', simdi = Date.now()) {
       id: h.id,
       baslik: h.baslik,
       seslendirme: seslendirme(h),
+      yas: yasMi(h),
       govde: nokta(hashtagsiz(h.metin).replace(/…$/, '.')),
       kaynak: `Kaynak: ${kaynakAdlari(h).join(', ')}`,
       videoBasligi: videoBasligi(h),

@@ -13,6 +13,8 @@ Günde 4 kez (Türkiye saatiyle 08:20, 12:20, 16:20, 20:20) GitHub Actions (`.gi
 
 ## Instagram fotoğraf gönderileri
 
+**Şehit haberleri** yas tonunda üretilir: siyah-gri arka plan, "BAŞIMIZ SAĞ OLSUN" etiketi, daha ağır seslendirme, taziye cümlesi ve hashtag yok.
+
 Videoların yanında günde 2 kez (10:50 ve 18:50) Instagram'a 1080x1350 haber kartı (görsel) atılır: başlık, kısa metin, kaynak adı ve sağ üstte logo. Görsel ve video aynı haberi tekrar etmez. Sayıyı `GORSEL_GUNLUK` (Worker değişkeni, varsayılan 2) belirler. Instagram bağlı değilken görseller de `/video/liste` sayfasında durur. Elle denemek için Actions > Gündem kısa videoları > Run workflow > `mod` = `foto`.
 
 ## Kurulum

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { videoyaUygun, hassasMi, seslendirme, videoAciklamasi, videoBasligi, kaynakAdlari } from '../gundem-sitesi/src/video.js';
+import { videoyaUygun, hassasMi, yasMi, YAS_SOZU, seslendirme, videoAciklamasi, videoBasligi, kaynakAdlari } from '../gundem-sitesi/src/video.js';
 
 const haber = (o = {}) => ({
   baslik: "İstanbul'da hafta sonu sağanak yağış bekleniyor",
@@ -89,4 +89,18 @@ test('görsel (jpg) dosyası doğru türle sunulur, yetkisiz sıra isteği redde
   assert.equal((await videoIstek(new Request('https://x/video/7.mp4'), env, '/video/7.mp4')).status, 404);
   const s = await videoIstek(new Request('https://x/api/video/sira?tur=foto', { method: 'POST' }), env, '/api/video/sira');
   assert.equal(s.status, 401);
+});
+
+test('şehit haberi yas tonunda: taziye cümlesi, hashtag yok, terör kelimesi düşürmez', () => {
+  const h = haber({ baslik: "Hakkari'de terör saldırısı: 2 asker şehit oldu", metin: 'Milli Savunma Bakanlığı acı haberi duyurdu. #şehit #hakkari' });
+  assert.ok(yasMi(h));
+  assert.equal(hassasMi(h), false);
+  assert.ok(videoyaUygun(h));
+  assert.ok(seslendirme(h).includes(YAS_SOZU));
+  const a = videoAciklamasi(h);
+  assert.ok(a.includes(YAS_SOZU));
+  assert.ok(!a.includes('#'));
+  assert.ok(!videoBasligi(h).includes('#Shorts'));
+  assert.ok(hassasMi(haber({ baslik: 'Şehit cenazesinde Erdoğan konuştu' })), 'siyaset yine düşer');
+  assert.equal(yasMi(haber()), false);
 });

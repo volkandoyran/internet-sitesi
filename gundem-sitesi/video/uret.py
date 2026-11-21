@@ -40,6 +40,27 @@ ORNEK = {
     'videoBasligi': "İstanbul'da hafta sonu sağanak yağış bekleniyor #Shorts",
     'aciklama': 'Deneme videosu.',
 }
+# Yas tonu denemesi için (KURU=1 ORNEK_YAS=1)
+ORNEK_YAS = {
+    'id': 0, 'yas': True,
+    'baslik': 'Hakkari\'de iki askerimiz şehit oldu',
+    'seslendirme': "Hakkari'de iki askerimiz şehit oldu. Milli Savunma Bakanlığı, şehitlerimizin naaşlarının memleketlerine "
+                   "gönderileceğini açıkladı. Başımız sağ olsun. Şehitlerimize Allah'tan rahmet, ailelerine sabır diliyoruz. "
+                   "Kaynak: Anadolu Ajansı, TRT Haber.",
+    'kaynak': 'Kaynak: Anadolu Ajansı, TRT Haber',
+    'govde': 'Milli Savunma Bakanlığı, şehitlerimizin naaşlarının memleketlerine gönderileceğini açıkladı.',
+    'videoBasligi': "Hakkari'de iki askerimiz şehit oldu",
+    'aciklama': 'Deneme videosu.',
+}
+
+
+def tema(haber):
+    """Şehit haberleri yas tonunda: siyah-gri arka plan, koyu etiket, beyaz altyazı, taziye satırı."""
+    if haber.get('yas'):
+        return {'etiket': 'BAŞIMIZ SAĞ OLSUN', 'etiket_renk': '&H00303030', 'c0': '0x000000', 'c1': '0x1c1c1c',
+                'altyazi': '&H00FFFFFF', 'cizgi': '0x555555'}
+    return {'etiket': 'GÜNDEM', 'etiket_renk': '&H002A2AD9', 'c0': '0x0b1220', 'c1': '0x1d2a44',
+            'altyazi': '&H0033D6FF', 'cizgi': '0x3a4a66'}
 
 
 def log(*a):
@@ -108,10 +129,12 @@ def sure(dosya):
     return float(c.stdout.strip())
 
 
-def seslendir(metin, dosya):
+def seslendir(metin, dosya, yas=False):
     model = os.environ.get('PIPER_MODEL')
     if model and shutil.which('piper'):
-        subprocess.run(['piper', '--model', model, '--output_file', dosya, '--sentence_silence', '0.35'],
+        # Yas haberlerinde daha ağır ve duraklamalı okunur
+        hiz = ['--length_scale', '1.15', '--sentence_silence', '0.7'] if yas else ['--sentence_silence', '0.35']
+        subprocess.run(['piper', '--model', model, '--output_file', dosya, *hiz],
                        input=metin.encode(), check=True)
         return
     if os.environ.get('KURU') != '1':
@@ -175,17 +198,18 @@ def ass_yaz(haber, toplam, dosya):
         baslik = baslik[:6]
         baslik[-1] = baslik[-1].rstrip('.,;:') + '…'
     son = zaman_ass(toplam + 1)
+    t = tema(haber)
     satirlar = [
         '[Script Info]', 'ScriptType: v4.00+', f'PlayResX: {G}', f'PlayResY: {Y}', 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
         '[V4+ Styles]',
         'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, '
         'StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-        f'Style: Etiket,{FONT},46,&H00FFFFFF,&H00FFFFFF,&H002A2AD9,&H002A2AD9,1,0,0,0,100,100,4,0,3,18,0,7,90,90,0,1',
+        f'Style: Etiket,{FONT},46,&H00FFFFFF,&H00FFFFFF,{t["etiket_renk"]},{t["etiket_renk"]},1,0,0,0,100,100,4,0,3,18,0,7,90,90,0,1',
         f'Style: Baslik,{FONT},64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
-        f'Style: Altyazi,{FONT},84,&H0033D6FF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,6,2,5,80,80,0,1',
+        f'Style: Altyazi,{FONT},84,{t["altyazi"]},&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,6,2,5,80,80,0,1',
         f'Style: Kaynak,{FONT},42,&H00B8B8B8,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,1,90,90,0,1',
         '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-        f'Dialogue: 0,0:00:00.00,{son},Etiket,,0,0,0,,{{\\pos(90,230)}}GÜNDEM',
+        f'Dialogue: 0,0:00:00.00,{son},Etiket,,0,0,0,,{{\\pos(90,230)}}' + t['etiket'],
         f'Dialogue: 0,0:00:00.00,{son},Baslik,,0,0,0,,{{\\pos(90,330)}}' + '\\N'.join(ass_kac(s) for s in baslik),
         f'Dialogue: 0,0:00:00.00,{son},Kaynak,,0,0,0,,{{\\pos(90,1760)}}' + ass_kac(haber['kaynak']),
     ]
@@ -198,12 +222,13 @@ def ass_yaz(haber, toplam, dosya):
 
 def video_uret(haber, klasor):
     ses = os.path.join(klasor, 'ses.wav')
-    seslendir(haber['seslendirme'], ses)
+    seslendir(haber['seslendirme'], ses, haber.get('yas'))
     toplam = sure(ses) + 0.6
     alt = os.path.join(klasor, 'alt.ass')
     ass_yaz(haber, toplam, alt)
-    arka = f'gradients=s={G}x{Y}:c0=0x0b1220:c1=0x1d2a44:x0=0:y0=0:x1=0:y1={Y}:speed=0.0001:r=30:d={toplam:.2f}'
-    cizim = (f'drawbox=x=90:y=1700:w={G - 180}:h=2:color=0x3a4a66:t=fill,ass={alt}')
+    t = tema(haber)
+    arka = f'gradients=s={G}x{Y}:c0={t["c0"]}:c1={t["c1"]}:x0=0:y0=0:x1=0:y1={Y}:speed=0.0001:r=30:d={toplam:.2f}'
+    cizim = (f'drawbox=x=90:y=1700:w={G - 180}:h=2:color={t["cizgi"]}:t=fill,ass={alt}')
     subprocess.run([
         'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', arka, '-i', ses, '-i', LOGO,
         '-filter_complex', f'[0:v]{cizim}[z];[2:v]scale=170:170[l];[z][l]overlay=x=W-w-70:y=200[v]',
@@ -226,28 +251,30 @@ def foto_uret(haber, klasor):
         govde = govde[:7]
         govde[-1] = govde[-1].rstrip('.,;:') + '…'
     by = 270 + len(baslik) * 74 + 60
+    t = tema(haber)
+    yas = (['Başımız sağ olsun.'] if haber.get('yas') else [])
     alt = os.path.join(klasor, 'foto.ass')
     satirlar = [
         '[Script Info]', 'ScriptType: v4.00+', f'PlayResX: {G}', f'PlayResY: {gy}', 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
         '[V4+ Styles]',
         'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, '
         'StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-        f'Style: Etiket,{FONT},42,&H00FFFFFF,&H00FFFFFF,&H002A2AD9,&H002A2AD9,1,0,0,0,100,100,4,0,3,16,0,7,90,90,0,1',
+        f'Style: Etiket,{FONT},42,&H00FFFFFF,&H00FFFFFF,{t["etiket_renk"]},{t["etiket_renk"]},1,0,0,0,100,100,4,0,3,16,0,7,90,90,0,1',
         f'Style: Baslik,{FONT},66,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
         f'Style: Govde,{FONT},44,&H00E5E7EB,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
         f'Style: Kaynak,{FONT},36,&H00B8B8B8,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,1,90,90,0,1',
         '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-        'Dialogue: 0,0:00:00.00,0:00:05.00,Etiket,,0,0,0,,{\\pos(90,140)}GÜNDEM',
+        'Dialogue: 0,0:00:00.00,0:00:05.00,Etiket,,0,0,0,,{\\pos(90,140)}' + t['etiket'],
         'Dialogue: 0,0:00:00.00,0:00:05.00,Baslik,,0,0,0,,{\\pos(90,270)}' + '\\N'.join(ass_kac(x) for x in baslik),
-        f'Dialogue: 0,0:00:00.00,0:00:05.00,Govde,,0,0,0,,{{\\pos(90,{by})}}' + '\\N'.join(ass_kac(x) for x in govde),
+        f'Dialogue: 0,0:00:00.00,0:00:05.00,Govde,,0,0,0,,{{\\pos(90,{by})}}' + '\\N'.join(ass_kac(x) for x in govde + yas),
         'Dialogue: 0,0:00:00.00,0:00:05.00,Kaynak,,0,0,0,,{\\pos(90,1260)}' + ass_kac(haber['kaynak']),
     ]
     with open(alt, 'w', encoding='utf-8') as f:
         f.write('\n'.join(satirlar) + '\n')
-    arka = f'gradients=s={G}x{gy}:c0=0x0b1220:c1=0x1d2a44:x0=0:y0=0:x1=0:y1={gy}:speed=0.0001:r=1:d=1'
+    arka = f'gradients=s={G}x{gy}:c0={t["c0"]}:c1={t["c1"]}:x0=0:y0=0:x1=0:y1={gy}:speed=0.0001:r=1:d=1'
     subprocess.run([
         'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', arka, '-i', LOGO,
-        '-filter_complex', f'[0:v]drawbox=x=90:y=1200:w={G - 180}:h=2:color=0x3a4a66:t=fill,ass={alt}[z];'
+        '-filter_complex', f'[0:v]drawbox=x=90:y=1200:w={G - 180}:h=2:color={t["cizgi"]}:t=fill,ass={alt}[z];'
                            f'[1:v]scale=160:160[l];[z][l]overlay=x=W-w-70:y=100[v]',
         '-map', '[v]', '-frames:v', '1', '-q:v', '2', CIKTI,
     ], check=True)
@@ -333,7 +360,7 @@ def instagram_paylas(haber, video_url):
 def main():
     kuru = os.environ.get('KURU') == '1'
     if kuru:
-        haber = ORNEK
+        haber = ORNEK_YAS if os.environ.get('ORNEK_YAS') == '1' else ORNEK
     else:
         os.environ.setdefault('GUNDEM_URL', 'https://gundem-sitesi.vitrin-web.workers.dev')
         s, _, g = site(f'/api/video/sira?tur={MOD}', method='POST')
