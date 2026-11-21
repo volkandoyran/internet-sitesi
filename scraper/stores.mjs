@@ -34,6 +34,7 @@ const JAR_SKIP = /^(acc|bro|brb|casa|casea|caseh|cab|ups|tel|tab|prn|toner|ink|k
 
 export const STORES = {
   pckolik: {
+    currency: 'TRY', // sayfada para birimi yazmazsa
     // Mağaza yalnızca bilgisayar ve parça satıyor: tüm ürün haritası
     sitemaps: ['https://pckolik.com.tr/sitemap-products.xml'],
     accept: (u) => u.includes('/urun/') && classify(slugText(u)) !== null,
@@ -74,7 +75,7 @@ const SEARCH = {
   GR: ['laptop', 'kinita', 'tablet', 'kartes-grafikon', 'epexergastes', 'othones', 'smartphone'],
   BG: ['laptop', 'smartfon', 'tablet', 'videokarti', 'procesori', 'monitori', 'kompyutri'],
 };
-const fc = (country, site, product) => ({ firecrawl: true, country, site, product, search: SEARCH[country] });
+const fc = (country, site, product) => ({ firecrawl: true, country, site, product, search: SEARCH[country], currency: country === 'TR' ? 'TRY' : 'EUR' });
 export const FC_STORES = {
   vatan: fc('TR', 'https://www.vatanbilgisayar.com', /\.html$/),
   teknosa: fc('TR', 'https://www.teknosa.com', /-p-\d+/),

@@ -13,8 +13,8 @@ export function parseNumber(raw) {
   } else if (lastComma > -1) {
     // 1,234 (binlik) ya da 12,99 (ondalık)
     s = /,\d{3}$/.test(s) && s.length > 4 ? s.replace(/,/g, '') : s.replace(',', '.');
-  } else if (lastDot > -1 && /\.\d{3}$/.test(s) && (s.match(/\./g).length > 1 || s.length > 5)) {
-    s = s.replace(/\./g, ''); // 12.999 (TR binlik)
+  } else if (lastDot > -1 && /^\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, ''); // 1.299 ve 12.999 (TR/GR binlik; fiyatta 3 ondalık hane olmaz)
   }
   const n = parseFloat(s);
   return Number.isFinite(n) && n > 0 ? n : null;

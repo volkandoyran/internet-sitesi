@@ -123,3 +123,27 @@ test('laptop parçaları', () => {
   for (const n of ['Laptop Çantası 15.6 inç Siyah', 'Notebook Soğutucu Stand 5 Fanlı', 'HAMA 200018 UNIVERSAL USB-C CAR NOTEBOOK POWER SUPP. UNIT', 'Logitech K380 Bluetooth Keyboard'])
     assert.equal(classify(n), null, n);
 });
+
+test('hata düzeltme oturumu: yanlış sınıflananlar', () => {
+  const k = (n) => { const c = classify(n); return c ? `${c.type}/${c.category || ''}` : null; };
+  // Araç ekranı, araç ve stüdyo hoparlörü, NAS, sıvı soğutma, 3D yazıcı kartı, USB bellek, hafıza kartı, monitör kolu
+  for (const n of ['DIQ LTM 11741_CPA (10INC) MULTIMEDIA TABLET FOR VW JETTA MOD. 2010-2016', 'ΗΧΕΙΑ ΑΥΤΟΚΙΝΗΤΟΥ PHOENIX GOLD ZX4CXS 4',
+    'ΗΧΕΙΑ MONITOR EVE AUDIO SC205', 'UGREEN NASYNC DXP2800 2-BAY NAS INTEL N100 QUAD-CORE CPU 8GB DDR5 RAM',
+    'AQUA COMPUTER BACKPLATE FOR KRYOGRAPHICS PASCAL GTX 1080/1070 PASSIVE', 'XSPC RAYSTORM CPU (INTEL) COPPER',
+    'CREALITY MAINBOARD KIT FOR ENDER-3 V3 KE', 'JVC MIRRORING-IPHONE-ANDROID-CARPLAY KW-M560BT',
+    'SanDisk Ultra 64GB USB 3.0 Flash Bellek', 'Карта памет Kingston 128GB microSD', 'North Bayou F80 Monitor Arm 17-30"']) {
+    assert.equal(k(n), null, n);
+  }
+  assert.equal(k('ΚΙΝΗΤΟ SAMSUNG GALAXY A18 128GB 4GB SILVER'), 'phone/');
+  assert.equal(k('Acer Liquid Z630 (черен), поддържа 2 sim карти, 5.5 (13.97 cm) HD IPS дисплей, 2GB RAM'), 'phone/');
+  assert.equal(k('DESKTOP LENOVO THINKCENTRE NEO 30S G5 13DK000YMG INTEL CORE I5-13420H 16GB 512GB'), 'desktop/');
+  assert.equal(k('DESKTOP HP PRODESK TOWER 2G1AE R5-8500G 16GB 512GB SSD NO OS'), 'desktop/');
+  assert.equal(k('MSI Katana 15 B13VFK i7-13620H 16GB 1TB RTX4060'), 'laptop/');
+  assert.equal(k('Asus ROG Strix Scar 18 G834JYR i9-14900HX 32GB 2TB RTX 4090'), 'laptop/');
+  assert.equal(k('HP OMEN 27qs 240Hz Monitör'), 'part/monitor');
+  assert.equal(k('ASUS ProArt PA278CV 27 inç Monitör'), 'part/monitor');
+  assert.equal(k('ASUS ROG Strix GeForce RTX 4090 OC 24GB Ekran Kartı'), 'part/gpu');
+  assert.equal(k('Lenovo ThinkPad T14 batarya'), 'part/laptop-batarya');
+  assert.deepEqual(specsFromName('Xiaomi Redmi Note 13 Pro 8GB 256GB', { type: 'phone' }), { ram_gb: 8, storage_gb: 256 });
+  assert.equal(specsFromName('HP Victus 16 i7-13700H 32GB 1TB RTX 4070', { type: 'laptop' }).storage_gb, 1000);
+});

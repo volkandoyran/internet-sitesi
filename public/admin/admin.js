@@ -114,7 +114,8 @@ async function renderProducts() {
     await api('products/' + id, 'PUT', formData(f));
     toast('Ürün kaydedildi');
   }));
-  el.addEventListener('click', async (e) => {
+  // onclick: liste her yenilendiğinde yeni dinleyici eklenmesin (yoksa tek tıkla iki kayıt/silme olur)
+  el.onclick = async (e) => {
     const act = e.target.dataset.act; if (!act) return;
     if (act === 'del-product') {
       const d = e.target.closest('details');
@@ -135,13 +136,14 @@ async function renderProducts() {
     if (act === 'del-offer') {
       await api('offers/' + tr.dataset.id, 'DELETE'); toast('Bağlantı silindi'); tr.remove();
     }
-  });
+  };
   // Satıcı değişince para birimini ona göre ayarla
   el.querySelectorAll('select[name=retailer_id]').forEach((s) => s.addEventListener('change', () => {
     const r = retailers.find((x) => x.id === s.value);
     s.closest('tr').querySelector('[name=currency]').value = r ? r.currency : 'EUR';
   }));
-  el.querySelectorAll('tr:not([data-id=""]) select[name=retailer_id], tr[data-id=""] select[name=retailer_id]').forEach((s) => s.dispatchEvent(new Event('change')));
+  // Yalnızca yeni satırlar: kayıtlı tekliflerin para birimi değiştirilmez
+  el.querySelectorAll('tr[data-id=""] select[name=retailer_id]').forEach((s) => s.dispatchEvent(new Event('change')));
 }
 
 // ---------- Satıcılar ----------

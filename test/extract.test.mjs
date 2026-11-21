@@ -30,7 +30,7 @@ test('özellik puanları', () => {
   assert.ok(gpuScore('RTX 4070') > gpuScore('RTX 4060'));
   assert.equal(cpuScore('Samsung 990 M2 SSD'), null);
   const q = parseQuery('i7 16gb 1tb rtx 4060 laptop');
-  assert.equal(q.ram_gb, 16); assert.equal(q.storage_gb, 1024); assert.equal(q.type, 'laptop');
+  assert.equal(q.ram_gb, 16); assert.equal(q.storage_gb, 1000); assert.equal(q.type, 'laptop');
   assert.ok(q.gpu_score >= 55 && q.cpu_score >= 70);
 });
 
@@ -44,4 +44,10 @@ test('arama metni ve eşikler', () => {
   assert.ok(cpuScore('Intel Core i9-14900HX') >= 85);
   assert.equal(gpuScore('NVIDIA GeForce RTX 4060 Laptop'), 58);
   assert.ok(gpuScore('RTX 4070') >= 66);
+});
+
+test('binlik ayırıcılı fiyatlar', () => {
+  assert.equal(parseNumber('1.299'), 1299);
+  assert.equal(parseNumber('12.999,00 TL'), 12999);
+  assert.equal(parseNumber('5.99'), 5.99);
 });

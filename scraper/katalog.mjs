@@ -98,7 +98,9 @@ let fcLeft = 0;
 try {
   const r = await fetch(`${SITE}/api/admin/firecrawl`, { headers: auth });
   const info = r.ok ? await r.json() : {};
-  if (info.enabled) fcLeft = +process.env.FIRECRAWL_LIMIT || info.limit || 0;
+  // Çalıştırırken 0 girilirse Firecrawl hiç kullanılmaz (önceden 0, "sitedeki ayar" sayılıyordu)
+  const asked = (process.env.FIRECRAWL_LIMIT || '').trim();
+  if (info.enabled) fcLeft = asked !== '' ? Math.max(0, +asked || 0) : info.limit || 0;
 } catch {}
 console.log('Firecrawl kredisi (bu çalıştırma):', fcLeft);
 let fcUsed = 0;
@@ -127,7 +129,7 @@ const summary = [];
 async function processUrl(id, cfg, url, stat, items) {
   try {
     const html = await fetchPage(url, cfg);
-    const p = extractProduct(html);
+    const p = extractProduct(html, cfg.currency || 'EUR');
     if (!p) { if (DRY) console.log('  [bilgi yok]', url, html.length, (html.match(/<title>([^<]{0,100})/) || [])[1]); throw new Error('ürün bilgisi bulunamadı'); }
     // Mağaza kategorisi yalnızca okunabilir adlarda kullanılır: tek parça kod adlar
     // (ör. "SIF15_CEZH_2201_1000-WIN-14") yanlış kategoriye konmuş ürün olabilir, alınmaz.
