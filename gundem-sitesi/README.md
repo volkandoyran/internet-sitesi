@@ -5,14 +5,15 @@ Sosyal medya ve gündem otomasyonunun tek merkezi. Fiyat karşılaştırma sites
 ## Ne yapar
 
 1. **Gündem botu (yarım saatte bir):** Türkçe haber sitelerinin herkese açık RSS akışlarını toplar (`src/kaynaklar.js`), aynı olayı anlatan haberleri tek haberde birleştirir (`src/ayikla.js`), her haber için kaynaklı kısa bir metin yazar (`src/metin.js`, Workers AI; kota dolarsa şablon) ve bağlı platformlarda onay beklemeden paylaşır (`src/paylas.js`).
-2. **Herkese açık haber sitesi:** `/` son haberler, arama ve son 24 saatin öne çıkanları; `/cok-konusulan` birden çok kaynakta geçenler; `/haber/<id>` haber sayfası ve kaynak bağlantıları; `/hakkinda`; `/rss.xml`, `/sitemap.xml`, `/robots.txt`; `/api/haberler` JSON.
+   **Yabancı basın:** `dil` alanı olan kaynakların (BBC News, The Guardian, Al Jazeera, DW News, NPR) en önemli haberleri (en çok kaynakta geçen, en yeni) Türkçe başlık ve metinle çevrilir. Çalışma başına en fazla `YABANCI_LIMIT` (varsayılan 2) çeviri yapılır ve bu sayı `AI_LIMIT` içinden düşer, yani ücretsiz yapay zekâ kotası artmaz. 6 saat içinde çevrilemeyen yabancı haber hiç yayınlanmaz; İngilizce metin asla yayınlanmaz.
+2. **Herkese açık haber sitesi:** `/` son haberler, arama ve son 24 saatin öne çıkanları; `/cok-konusulan` birden çok kaynakta geçenler; `/haber/<id>` haber sayfası ve kaynak adları; `/hakkinda`; `/rss.xml`, `/sitemap.xml`, `/robots.txt`; `/api/haberler` JSON.
 3. **Panel:** `/panel` paylaşıma hazır metinler ("Kopyala" düğmesi) ve paylaşım durumu, `/panel/kaynaklar` her kaynağın son çekim durumu. Arama motorlarına kapalıdır.
 
-**Telif:** haber metinleri ve görseller kopyalanmaz. Yalnızca başlık, botun kendi cümleleriyle yazdığı kısa özet ve asıl habere bağlantı gösterilir/paylaşılır.
+**Telif:** haber metinleri ve görseller kopyalanmaz. Yalnızca başlık, botun kendi cümleleriyle yazdığı kısa özet ve haberin alındığı yerin adı gösterilir/paylaşılır (bağlantı verilmez).
 
 ## Ücretsiz katman
 
-Tamamen ücretsiz planlarda çalışır: Workers (günde 48 zamanlanmış çalışma, günde 100.000 istek), D1 (`gundem-db`), Workers AI (günde 10.000 nöron; bot çalışma başına en fazla 8 metin yazar, günde yaklaşık 5.000 nöron). Ayarlar `wrangler.jsonc` içindeki `vars` ile: `AI_LIMIT`, `PAYLASIM_LIMIT`, `YENI_HABER_SAAT`, `SAKLA_GUN`, `SITE_ADI`, `SITE_ACIKLAMA`.
+Tamamen ücretsiz planlarda çalışır: Workers (günde 48 zamanlanmış çalışma, günde 100.000 istek), D1 (`gundem-db`), Workers AI (günde 10.000 nöron; bot çalışma başına en fazla 8 metin yazar, günde yaklaşık 5.000 nöron). Ayarlar `wrangler.jsonc` içindeki `vars` ile: `AI_LIMIT`, `YABANCI_LIMIT`, `YABANCI_SAAT`, `PAYLASIM_LIMIT`, `YENI_HABER_SAAT`, `SAKLA_GUN`, `SITE_ADI`, `SITE_ACIKLAMA`.
 
 ## Otomatik paylaşım
 

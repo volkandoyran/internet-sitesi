@@ -2,7 +2,7 @@
 import { KAYNAKLAR } from './kaynaklar.js';
 import { rssAyristir, xmlCoz } from './rss.js';
 import { imza, eslesen, urlSade } from './ayikla.js';
-import { aiMetin, sablonMetin, paylasimMetni } from './metin.js';
+import { aiMetin, aiCeviri, sablonMetin, paylasimMetni } from './metin.js';
 import { aktifPlatformlar } from './paylas.js';
 
 const SAAT = 3600e3;
@@ -12,6 +12,8 @@ export const ayarlar = (env) => ({
   yeniSaat: sayi(env.YENI_HABER_SAAT, 24),       // bundan eski haberler alınmaz
   eslesmeSaat: sayi(env.ESLESME_SAAT, 36),       // tekrar ararken bakılan süre
   aiLimit: sayi(env.AI_LIMIT, 8),                // çalışma başına yapay zekâ metni (ücretsiz kota için)
+  yabanciLimit: sayi(env.YABANCI_LIMIT, 2),      // bunun kaçı yabancı haber çevirisine ayrılır
+  yabanciSaat: sayi(env.YABANCI_SAAT, 6),        // bu sürede çevrilemeyen yabancı haber yayınlanmaz
   paylasimLimit: sayi(env.PAYLASIM_LIMIT, 2),    // çalışma başına platform başına paylaşım
   paylasimSaat: sayi(env.PAYLASIM_SAAT, 6),      // bundan eski haberler paylaşılmaz
   saklaGun: sayi(env.SAKLA_GUN, 7),
@@ -81,7 +83,7 @@ export async function topla(env, simdi = Date.now()) {
     yeniGorulen.push(u);
     const im = imza(h.baslik);
     const es = eslesen(im, mevcut);
-    const kay = { id: h.kaynak.id, ad: h.kaynak.ad, url: h.url, baslik: h.baslik };
+    const kay = { id: h.kaynak.id, ad: h.kaynak.ad, url: h.url, baslik: h.baslik, ...(h.kaynak.dil ? { dil: h.kaynak.dil } : {}) };
     if (es) {
       rapor.tekrar++;
       if (!es.kaynaklar.some((k) => k.id === kay.id)) { es.kaynaklar.push(kay); degisen.add(es); }
@@ -99,11 +101,26 @@ export async function topla(env, simdi = Date.now()) {
   }
   for (let i = 0; i < yaz.length; i += 50) await env.DB.batch(yaz.slice(i, i + 50));
 
-  // 4. Metinler: en çok kaynağın verdiği ve en yeni haberlere yapay zekâ, kalanına şablon
-  const bekleyen = (await env.DB.prepare('SELECT id, baslik, ozet, ilk_gorulme FROM haberler WHERE metin IS NULL ORDER BY kaynak_sayisi DESC, ilk_gorulme DESC').all()).results;
+  // 4. Metinler. Önce en önemli yabancı haberler Türkçeye çevrilir (en çok kaynak, en yeni),
+  // sonra Türkçe haberlere yapay zekâ metni; kota bitince Türkçe haberlere şablon.
+  const bekleyen = (await env.DB.prepare('SELECT id, baslik, ozet, kaynaklar, ilk_gorulme FROM haberler WHERE metin IS NULL ORDER BY kaynak_sayisi DESC, ilk_gorulme DESC').all()).results
+    .map((h) => ({ ...h, yabanci: Boolean(JSON.parse(h.kaynaklar)[0]?.dil) }));
   let ai = env.AI ? a.aiLimit : 0;
   const metinYaz = [];
-  for (const h of bekleyen) {
+  let ceviri = Math.min(ai, a.yabanciLimit);
+  for (const h of bekleyen.filter((x) => x.yabanci)) {
+    if (ceviri <= 0) break;
+    ceviri--; ai--;
+    try {
+      const c = await aiCeviri(env, h);
+      metinYaz.push(env.DB.prepare("UPDATE haberler SET baslik = ?, metin = ?, metin_turu = 'ceviri' WHERE id = ?").bind(c.baslik, c.metin, h.id));
+      rapor.metin++; rapor.ceviri = (rapor.ceviri || 0) + 1;
+    } catch (e) { rapor.hatalar.push(`Çeviri: ${e.message || e}`); }
+  }
+  // Zamanında çevrilemeyen yabancı haberler sessizce düşer (İngilizce metin yayınlanmaz)
+  metinYaz.push(env.DB.prepare(`DELETE FROM haberler WHERE metin IS NULL AND ilk_gorulme < ? AND json_extract(kaynaklar, '$[0].dil') IS NOT NULL`)
+    .bind(iso(simdi - a.yabanciSaat * SAAT)));
+  for (const h of bekleyen.filter((x) => !x.yabanci)) {
     let metin = null;
     let tur = 'sablon';
     if (ai > 0) {
