@@ -25,6 +25,8 @@ import urllib.request
 
 G, Y = 1080, 1920
 FONT = 'DejaVu Sans'
+# Hesabın logosu; her videonun sağ üst köşesine küçük olarak eklenir
+LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
 CIKTI = os.environ.get('CIKTI', 'video.mp4')
 
 ORNEK = {
@@ -179,8 +181,9 @@ def video_uret(haber, klasor):
     arka = f'gradients=s={G}x{Y}:c0=0x0b1220:c1=0x1d2a44:x0=0:y0=0:x1=0:y1={Y}:speed=0.0001:r=30:d={toplam:.2f}'
     cizim = (f'drawbox=x=90:y=1700:w={G - 180}:h=2:color=0x3a4a66:t=fill,ass={alt}')
     subprocess.run([
-        'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', arka, '-i', ses,
-        '-vf', cizim, '-af', 'apad,aresample=44100', '-t', f'{toplam:.2f}',
+        'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', arka, '-i', ses, '-i', LOGO,
+        '-filter_complex', f'[0:v]{cizim}[z];[2:v]scale=180:180[l];[z][l]overlay=x=W-w-80:y=210[v]',
+        '-map', '[v]', '-map', '1:a', '-af', 'apad,aresample=44100', '-t', f'{toplam:.2f}',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-r', '30',
         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', CIKTI,
     ], check=True)

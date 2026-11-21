@@ -6,6 +6,7 @@ Günde 4 kez (Türkiye saatiyle 08:20, 12:20, 16:20, 20:20) GitHub Actions (`.gi
 
 - En az **2 farklı kaynakta** geçen, son 8 saatin haberleri; en çok kaynakta geçen önce.
 - Siyaset, sağlık, suç ve yargı haberleri **videoya çevrilmez**, yalnızca sitede kalır.
+- Her videonun sağ üst köşesinde hesabın logosu (`video/logo.png`) bulunur; logoyu değiştirmek için bu dosyayı değiştirmek yeterli.
 - Videoda ve açıklamada bağlantı yok, yalnızca kaynak adı ("Kaynak: AA, NTV") ve "yapay zekâ ile seslendirildi" notu.
 - 24 saatte en fazla `VIDEO_GUNLUK` (varsayılan 4) video, her haberden en fazla bir video.
 - Acil durdurma: Worker'da `OTOMATIK_PAYLASIM` = `0` (Telegram ile birlikte videolar da durur).
