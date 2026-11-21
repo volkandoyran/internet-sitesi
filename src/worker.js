@@ -22,6 +22,8 @@ function ensureSchema(env) {
         env.DB.prepare('CREATE INDEX IF NOT EXISTS offers_url ON offers(retailer_id, url)'),
       ]);
     }
+    // Ülkeler arası eşleştirme anahtarları
+    if (!cols.includes('mkeys')) await env.DB.prepare('ALTER TABLE products ADD COLUMN mkeys TEXT').run();
   })().catch((e) => { ready = null; throw e; });
   return ready;
 }

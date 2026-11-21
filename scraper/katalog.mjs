@@ -6,7 +6,8 @@
 import { gunzipSync } from 'node:zlib';
 import { extractProduct } from './extract.mjs';
 import { STORES, FC_STORES } from './stores.mjs';
-import { classify, isExcluded, specsFromName, matchKey } from '../lib/catalog.js';
+import { classify, isExcluded, specsFromName, matchKey, modelKeys } from '../lib/catalog.js';
+import { runMatching } from './eslestir.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
 const PW = process.env.ADMIN_PASSWORD;
@@ -142,10 +143,13 @@ async function processUrl(id, cfg, url, stat, items) {
       if (eur != null && eur < min) kind = null;
     }
     if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); return; }
+    const specs = specsFromName(p.name, kind);
+    const match_key = matchKey(p);
     items.push({
       retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
-      ...kind, ...specsFromName(p.name, kind),
-      match_key: matchKey(p), price: p.price, currency: p.currency, in_stock: p.in_stock,
+      ...kind, ...specs,
+      match_key, keys: modelKeys({ ...p, ...kind, ...specs, match_key }),
+      price: p.price, currency: p.currency, in_stock: p.in_stock,
     });
     stat.eklendi++;
   } catch (e) {
@@ -234,6 +238,9 @@ for (const id of rotated) {
     console.error(id, 'başarısız:', e.message);
   }
 }
+
+// 3) Ülkeler ve mağazalar arası eşleştirme: aynı ürünün ayrı açılmış kayıtları birleştirilir
+try { await runMatching(SITE, auth, { dry: DRY }); } catch (e) { console.error('Eşleştirme başarısız:', e.message); }
 
 console.log('\n=== Özet ===');
 for (const s of summary) console.log(JSON.stringify(s));

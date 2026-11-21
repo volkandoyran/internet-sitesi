@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS products (
   screen_in   REAL,
   image       TEXT,
   match_key   TEXT,            -- mağazalar arası eşleştirme: üretici parça kodu ya da model kodu
+  mkeys       TEXT,            -- tüm eşleştirme anahtarları, boşlukla ayrılmış (" K1 K2 "); tarayıcı hesaplar
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

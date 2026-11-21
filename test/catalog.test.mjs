@@ -158,3 +158,31 @@ test('Technopolis (Angular) sayfasından ad ve fiyat', () => {
   assert.equal(p.in_stock, true);
   assert.match(p.name, /RYZEN 5 5600/);
 });
+
+test('ülkeler arası eşleştirme anahtarları', async () => {
+  const { modelKeys } = await import('../lib/catalog.js');
+  const { planMatches } = await import('../scraper/eslestir.mjs');
+  const same = (a, b) => modelKeys(a).some((k) => modelKeys(b).includes(k));
+  // Telefon: Bulgarca ve Yunanca adlar, farklı renk; aynı model ve depolama
+  assert.ok(same({ name: 'Смартфон Apple iPhone 17 Pro Max (Silver), поддържа 2 SIM карти, 256GB', type: 'phone' }, { name: 'KINHTO IPHONE 17 PRO MAX 256GB COSMIC ORANGE', type: 'phone' }));
+  assert.ok(!same({ name: 'KINHTO IPHONE 17 PRO MAX 256GB SILVER', type: 'phone' }, { name: 'KINHTO IPHONE 17 PRO MAX 512GB SILVER', type: 'phone' }));
+  assert.ok(!same({ name: 'KINHTO IPHONE 17 PRO 256GB SILVER', type: 'phone' }, { name: 'KINHTO IPHONE 17 PRO MAX 256GB SILVER', type: 'phone' }));
+  assert.ok(same({ name: 'SAMSUNG GALAXY Z FLIP8 12/512GB 5G GRAPHITE F776', type: 'phone' }, { name: 'ΚΙΝΗΤΟ SAMSUNG F776 GALAXY Z FLIP 8 512GB 12GB 5G PINK', type: 'phone' }));
+  // Lenovo bölge eki (GM Yunanistan, BM Bulgaristan)
+  assert.ok(same({ name: 'LAPTOP LENOVO IDEAPAD SLIM 3 15IRH10 83K10009GM 15.6', type: 'laptop' }, { name: 'LENOVO IDEAPAD SLIM 3 15IRH10 83K10009BM', type: 'laptop' }));
+  // İşlemci: Türkçe ve Bulgarca, kutulu/kutusuz
+  const cpu = (name) => ({ name, type: 'part', category: 'cpu' });
+  assert.ok(same(cpu('AMD Ryzen 7 9800X3D 4.70 GHz 8 Çekirdek Tray İşlemci'), cpu('Процесор AMD Ryzen 7 9800X3D, осемядрен')));
+  assert.ok(!same(cpu('AMD Ryzen 7 9800X3D'), cpu('AMD Ryzen 7 9850X3D')));
+  // Ekran kartı: aynı marka, seri, yonga ve bellek
+  const gpu = (name) => ({ name, type: 'part', category: 'gpu' });
+  assert.ok(same(gpu('ASUS TUF Gaming GeForce RTX 5070 Ti 16GB GDDR7 OC Edition'), gpu('VGA ASUS TUF GAMING GEFORCE RTX 5070 TI OC 16GB GDDR7')));
+  assert.ok(!same(gpu('ASUS TUF Gaming GeForce RTX 5070 Ti 16GB'), gpu('ASUS PRIME GeForce RTX 5070 Ti 16GB')));
+  // Birleştirme planı: en çok teklifi olan ürün kalır, tür farklıysa birleşmez
+  const plan = planMatches([
+    { id: 1, name: 'KINHTO IPHONE 17 PRO MAX 256GB SILVER', type: 'phone', n: 1 },
+    { id: 2, name: 'APPLE IPHONE 17 PRO MAX 256GB BLACK', type: 'phone', n: 2 },
+    { id: 3, name: 'AMD Ryzen 7 9800X3D', type: 'part', category: 'cpu', n: 1 },
+  ]);
+  assert.deepEqual(plan.merges, [{ keep: 2, drop: [1] }]);
+});

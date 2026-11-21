@@ -298,6 +298,36 @@ async function admin(parts, method, request, env, url) {
     return json({ ok: true, updated: ok });
   }
 
+  // Eşleştirici için ürün listesi (tarayıcı anahtarları hesaplayıp aynı ürünleri birleştirir)
+  if (res === 'match' && method === 'GET') {
+    const rows = (await env.DB.prepare(
+      `SELECT p.id, p.name, p.brand, p.type, p.category, p.match_key, p.storage_gb, p.mkeys,
+              (SELECT COUNT(*) FROM offers o WHERE o.product_id = p.id) AS n FROM products p`
+    ).all()).results;
+    return json(rows);
+  }
+  // { merges: [{ keep, drop: [id...] }], keys: [{ id, mkeys }] } — ücretsiz planda istek başına sorgu sınırı olduğu için küçük parçalar halinde
+  if (res === 'match' && method === 'POST') {
+    const ints = (a) => (Array.isArray(a) ? a.map((x) => +x).filter((x) => Number.isInteger(x) && x > 0) : []);
+    const stmts = [];
+    for (const m of body.merges || []) {
+      const keep = +m.keep, drop = ints(m.drop).filter((x) => x !== keep).slice(0, 90);
+      if (!Number.isInteger(keep) || !drop.length) continue;
+      const q = drop.map(() => '?').join(',');
+      stmts.push(env.DB.prepare(`UPDATE offers SET product_id = ? WHERE product_id IN (${q})`).bind(keep, ...drop));
+      stmts.push(env.DB.prepare(`DELETE FROM products WHERE id IN (${q})`).bind(...drop));
+    }
+    const keys = (body.keys || []).filter((k) => Number.isInteger(+k.id) && typeof k.mkeys === 'string');
+    for (let i = 0; i < keys.length; i += 33) {
+      const part = keys.slice(i, i + 33);
+      stmts.push(env.DB.prepare(`UPDATE products SET mkeys = CASE id ${part.map(() => 'WHEN ? THEN ?').join(' ')} END WHERE id IN (${part.map(() => '?').join(',')})`)
+        .bind(...part.flatMap((k) => [+k.id, k.mkeys.slice(0, 500)]), ...part.map((k) => +k.id)));
+    }
+    if (stmts.length > 45) return fail('Tek istekte en fazla 45 sorgu: daha küçük parçalar gönderin.');
+    if (stmts.length) await env.DB.batch(stmts);
+    return json({ ok: true, queries: stmts.length });
+  }
+
   if (res === 'catalog') {
     if (method === 'GET') {
       // Katalog tarayıcısı için: bilinen otomatik bağlantılar
@@ -415,15 +445,24 @@ async function catalogUpsert(env, body) {
       out.updated++;
       continue;
     }
-    // Yeni bağlantı: aynı model başka mağazada varsa ona bağla
+    // Yeni bağlantı: aynı model başka mağazada/ülkede varsa ona bağla.
+    // Önce tarayıcının hesapladığı anahtarlar (üretici kodu, model + depolama, işlemci modeli...), sonra eski match_key.
     let productId = null;
-    if (it.match_key) {
+    const keys = (Array.isArray(it.keys) ? it.keys : []).filter((k) => typeof k === 'string' && /^[A-Z0-9:А-Я+]{3,80}$/.test(k)).slice(0, 6);
+    if (keys.length) {
+      const p = await env.DB.prepare(
+        `SELECT id FROM products WHERE type = ? AND IFNULL(category, '') = IFNULL(?, '') AND (${keys.map(() => 'mkeys LIKE ?').join(' OR ')}) ORDER BY id LIMIT 1`
+      ).bind(it.type, it.category || null, ...keys.map((k) => `% ${k} %`)).first();
+      if (p) { productId = p.id; out.linked++; }
+    }
+    if (!productId && it.match_key) {
       const p = await env.DB.prepare('SELECT id FROM products WHERE match_key = ? AND type = ? LIMIT 1').bind(it.match_key, it.type).first();
       if (p) { productId = p.id; out.linked++; }
     }
     if (!productId) {
       const p = cleanProduct(it);
       p.match_key = it.match_key || null;
+      p.mkeys = keys.length ? ` ${keys.join(' ')} ` : null;
       const keys = Object.keys(p).filter((k) => p[k] != null);
       const row = await env.DB.prepare(`INSERT INTO products (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')}) RETURNING id`)
         .bind(...keys.map((k) => p[k])).first();
