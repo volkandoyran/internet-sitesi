@@ -38,11 +38,11 @@ CREATE TABLE IF NOT EXISTS paylasimlar (
   PRIMARY KEY (haber_id, platform)
 );
 
--- Kısa video kaydı (src/video.js). Her haberden en fazla bir video; dosya R2'de (VIDEO) bir süre durur.
+-- Kısa video kaydı (src/video.js). Her haberden en fazla bir video; dosya KV'de (VIDEO) 48 saat durur.
 CREATE TABLE IF NOT EXISTS videolar (
   haber_id INTEGER PRIMARY KEY,
   durum    TEXT NOT NULL,                 -- 'uretiliyor', 'yuklendi' ya da 'hata'
-  dosya    INTEGER NOT NULL DEFAULT 0,    -- 1: dosya R2'de duruyor
+  dosya    INTEGER NOT NULL DEFAULT 0,    -- 1: dosya yüklendi
   hata     TEXT,
   zaman    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );

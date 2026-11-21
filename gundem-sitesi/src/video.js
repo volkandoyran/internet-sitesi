@@ -1,7 +1,7 @@
 // Kısa dikey haber videoları (YouTube Shorts, Instagram Reels).
 // Video, ücretsiz GitHub Actions içinde üretilir (gundem-sitesi/video/uret.py: Piper seslendirme +
-// FFmpeg). Bu modül o işe sıradaki uygun haberi verir, biten videoyu R2'de saklayıp herkese açık
-// sunar (Instagram videoyu bu adresten çeker) ve platform sonuçlarını `paylasimlar` tablosuna yazar.
+// FFmpeg). Bu modül o işe sıradaki uygun haberi verir, biten videoyu Workers KV'de (ücretsiz, kart
+// gerektirmez; 48 saat sonra kendiliğinden silinir) saklayıp herkese açık sunar (Instagram videoyu bu adresten çeker) ve platform sonuçlarını `paylasimlar` tablosuna yazar.
 // Onay beklenmez; onun yerine kurallar: en az iki kaynak, hassas konular hariç, günlük sınır, acil durdurma.
 
 const SAAT = 3600e3;
@@ -11,7 +11,7 @@ export const videoAyarlari = (env) => ({
   gunluk: sayi(env.VIDEO_GUNLUK, 4),          // 24 saatte en fazla video
   saat: sayi(env.VIDEO_SAAT, 8),              // bundan eski haberden video yapılmaz
   enAzKaynak: sayi(env.VIDEO_EN_AZ_KAYNAK, 2),
-  saklaSaat: sayi(env.VIDEO_SAKLA_SAAT, 48),  // R2'deki dosya bu süre sonra silinir
+  saklaSaat: sayi(env.VIDEO_SAKLA_SAAT, 48),  // KV'deki dosya bu süre sonra kendiliğinden silinir
 });
 
 // Videoya çevrilmeyen konular (haber sitede kalır). Yanlış ya da hassas haberin onaysız videoya
@@ -83,18 +83,8 @@ async function anahtarDogru(env, verilen) {
 
 const iso = (ms) => new Date(ms).toISOString();
 
-// Eski video dosyalarını R2'den sil (kayıt kalır, aynı haberden ikinci video yapılmaz)
-async function temizle(env, a, simdi) {
-  const eski = (await env.DB.prepare("SELECT haber_id FROM videolar WHERE dosya = 1 AND zaman < ?")
-    .bind(iso(simdi - a.saklaSaat * SAAT)).all()).results;
-  if (!eski.length || !env.VIDEO) return;
-  await env.VIDEO.delete(eski.map((r) => `${r.haber_id}.mp4`));
-  await env.DB.batch(eski.map((r) => env.DB.prepare('UPDATE videolar SET dosya = 0 WHERE haber_id = ?').bind(r.haber_id)));
-}
-
 async function siradaki(env, simdi = Date.now()) {
   const a = videoAyarlari(env);
-  await temizle(env, a, simdi);
   if (env.OTOMATIK_PAYLASIM === '0') return { neden: 'otomatik paylaşım kapalı (OTOMATIK_PAYLASIM=0)' };
   const bugun = (await env.DB.prepare("SELECT COUNT(*) AS n FROM videolar WHERE zaman >= ? AND durum != 'hata'")
     .bind(iso(simdi - 24 * SAAT)).first()).n;
@@ -123,18 +113,22 @@ const PLATFORM = new Set(['youtube', 'instagram', 'tiktok']);
 export async function videoIstek(req, env, yol) {
   const dosya = yol.match(/^\/video\/(\d+)\.mp4$/);
   if (dosya && (req.method === 'GET' || req.method === 'HEAD')) {
-    if (!env.VIDEO) return new Response('Video deposu bağlı değil', { status: 404 });
-    const o = await env.VIDEO.get(`${dosya[1]}.mp4`, { range: req.headers });
-    if (!o) return new Response('Bulunamadı', { status: 404 });
-    const h = new Headers({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600', etag: o.httpEtag });
-    if (req.headers.has('range') && o.range && 'offset' in o.range) {
-      const bas = o.range.offset, son = bas + (o.range.length ?? o.size - bas) - 1;
-      h.set('content-range', `bytes ${bas}-${son}/${o.size}`);
+    const veri = env.VIDEO && (await env.VIDEO.get(`${dosya[1]}.mp4`, 'arrayBuffer'));
+    if (!veri) return new Response('Bulunamadı', { status: 404 });
+    const n = veri.byteLength;
+    const h = new Headers({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600' });
+    const r = (req.headers.get('range') || '').match(/^bytes=(\d*)-(\d*)$/);
+    if (r && (r[1] || r[2])) {
+      let bas = r[1] ? Number(r[1]) : n - Number(r[2]);
+      let son = r[1] && r[2] ? Math.min(Number(r[2]), n - 1) : n - 1;
+      bas = Math.max(0, bas);
+      if (bas > son) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${n}` } });
+      h.set('content-range', `bytes ${bas}-${son}/${n}`);
       h.set('content-length', String(son - bas + 1));
-      return new Response(req.method === 'HEAD' ? null : o.body, { status: 206, headers: h });
+      return new Response(req.method === 'HEAD' ? null : veri.slice(bas, son + 1), { status: 206, headers: h });
     }
-    h.set('content-length', String(o.size));
-    return new Response(req.method === 'HEAD' ? null : o.body, { headers: h });
+    h.set('content-length', String(n));
+    return new Response(req.method === 'HEAD' ? null : veri, { headers: h });
   }
   if (!yol.startsWith('/api/video')) return null;
   if (!(await anahtarDogru(env, req.headers.get('x-video-anahtar')))) return Response.json({ hata: 'yetkisiz' }, { status: 401 });
@@ -143,13 +137,14 @@ export async function videoIstek(req, env, yol) {
 
   const yukle = yol.match(/^\/api\/video\/(\d+)\/dosya$/);
   if (yukle && req.method === 'PUT') {
-    if (!env.VIDEO) return Response.json({ hata: 'VIDEO (R2) bağlı değil' }, { status: 500 });
+    if (!env.VIDEO) return Response.json({ hata: 'VIDEO (KV) bağlı değil' }, { status: 500 });
     const id = Number(yukle[1]);
     const v = await env.DB.prepare('SELECT haber_id FROM videolar WHERE haber_id = ?').bind(id).first();
     if (!v) return Response.json({ hata: 'bu haber için video işi yok' }, { status: 404 });
-    const boyut = Number(req.headers.get('content-length') || 0);
-    if (!boyut || boyut > 95e6) return Response.json({ hata: 'dosya boyutu geçersiz' }, { status: 413 });
-    await env.VIDEO.put(`${id}.mp4`, req.body, { httpMetadata: { contentType: 'video/mp4' } });
+    const veri = await req.arrayBuffer();
+    // KV değer sınırı 25 MB; bu videolar genelde 1-5 MB
+    if (!veri.byteLength || veri.byteLength > 24e6) return Response.json({ hata: 'dosya boyutu geçersiz' }, { status: 413 });
+    await env.VIDEO.put(`${id}.mp4`, veri, { expirationTtl: Math.max(60, videoAyarlari(env).saklaSaat * 3600) });
     await env.DB.prepare("UPDATE videolar SET durum = 'yuklendi', dosya = 1 WHERE haber_id = ?").bind(id).run();
     return Response.json({ url: `${new URL(req.url).origin}/video/${id}.mp4` });
   }

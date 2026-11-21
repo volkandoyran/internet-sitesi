@@ -11,8 +11,8 @@
   ],
   // Sosyal medya metnini yazan model (ücretsiz katman: günde 10.000 nöron, bot ~5.000 kullanır)
   "ai": { "binding": "AI" },
-  // Kısa haber videoları (src/video.js); Instagram videoyu /video/<id>.mp4 adresinden çeker. Ücretsiz: 10 GB.
-  "r2_buckets": [{ "binding": "VIDEO", "bucket_name": "gundem-video" }],
+  // Kısa haber videoları (src/video.js); Instagram videoyu /video/<id>.mp4 adresinden çeker. 48 saat sonra silinir.
+  "kv_namespaces": [{ "binding": "VIDEO", "id": "6ca8f4d0d80844c7b4a268ffe3f193f9" }],
   "vars": {
     // "0" yapılırsa platform bağlı olsa bile paylaşım durur
     "OTOMATIK_PAYLASIM": "1",

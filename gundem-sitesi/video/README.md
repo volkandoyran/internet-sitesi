@@ -1,6 +1,6 @@
 # Kısa haber videoları (YouTube Shorts, Instagram Reels)
 
-Günde 4 kez (Türkiye saatiyle 08:20, 12:20, 16:20, 20:20) GitHub Actions (`.github/workflows/gundem-video.yml`) gündem sitesinden sıradaki uygun haberi alır, 9:16 bir video üretir ve bağlı platformlarda **onay beklemeden** paylaşır. Her şey ücretsiz: seslendirme [Piper](https://github.com/rhasspy/piper) (açık kaynak Türkçe ses), görüntü FFmpeg, depolama Cloudflare R2 (10 GB ücretsiz).
+Günde 4 kez (Türkiye saatiyle 08:20, 12:20, 16:20, 20:20) GitHub Actions (`.github/workflows/gundem-video.yml`) gündem sitesinden sıradaki uygun haberi alır, 9:16 bir video üretir ve bağlı platformlarda **onay beklemeden** paylaşır. Her şey ücretsiz: seslendirme [Piper](https://github.com/rhasspy/piper) (açık kaynak Türkçe ses), görüntü FFmpeg, depolama Cloudflare Workers KV (ücretsiz, kart gerekmez).
 
 ## Hangi haberler videoya dönüşür (`src/video.js`)
 
