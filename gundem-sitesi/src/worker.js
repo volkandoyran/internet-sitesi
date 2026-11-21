@@ -4,6 +4,7 @@
 import SCHEMA from '../schema.sql';
 import { topla } from './bot.js';
 import { videoIstek } from './video.js';
+import { kapakSvg } from './kapak.js';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
 import { haberler, oneCikanlar, haber, sonHaberler } from './veri.js';
 import { kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
@@ -76,6 +77,12 @@ export default {
       const { liste: l, sonraki } = await haberler(env, { sayfa, cok: true });
       return kabuk(env, { baslik: 'Çok konuşulanlar', secili: 'cok', aciklama: 'Birden çok haber kaynağında yer alan gündem başlıkları.',
         govde: liste(l, { bosMesaj: 'Henüz birden çok kaynakta geçen haber yok.' }) + sayfalama('/cok-konusulan', sayfa, sonraki) });
+    }
+    const kp = yol.match(/^\/kapak\/(\d+)\.svg$/);
+    if (kp) {
+      const h = await haber(env, Number(kp[1]));
+      if (!h) return new Response('Bulunamadı', { status: 404 });
+      return new Response(kapakSvg(h), { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
     }
     const m = yol.match(/^\/haber\/(\d+)$/);
     if (m) {
