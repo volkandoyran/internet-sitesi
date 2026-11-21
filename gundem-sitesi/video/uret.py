@@ -149,7 +149,10 @@ def kaydir(metin, en_fazla):
 
 
 def ass_yaz(haber, toplam, dosya):
-    baslik = kaydir(haber['baslik'], 24)[:5]
+    baslik = kaydir(haber['baslik'], 18)  # dar tutulur: sağ üstteki logoya değmesin
+    if len(baslik) > 6:
+        baslik = baslik[:6]
+        baslik[-1] = baslik[-1].rstrip('.,;:') + '…'
     son = zaman_ass(toplam + 1)
     satirlar = [
         '[Script Info]', 'ScriptType: v4.00+', f'PlayResX: {G}', f'PlayResY: {Y}', 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
@@ -157,7 +160,7 @@ def ass_yaz(haber, toplam, dosya):
         'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, '
         'StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
         f'Style: Etiket,{FONT},46,&H00FFFFFF,&H00FFFFFF,&H002A2AD9,&H002A2AD9,1,0,0,0,100,100,4,0,3,18,0,7,90,90,0,1',
-        f'Style: Baslik,{FONT},70,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
+        f'Style: Baslik,{FONT},64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
         f'Style: Altyazi,{FONT},84,&H0033D6FF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,6,2,5,80,80,0,1',
         f'Style: Kaynak,{FONT},42,&H00B8B8B8,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,1,90,90,0,1',
         '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -182,7 +185,7 @@ def video_uret(haber, klasor):
     cizim = (f'drawbox=x=90:y=1700:w={G - 180}:h=2:color=0x3a4a66:t=fill,ass={alt}')
     subprocess.run([
         'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', arka, '-i', ses, '-i', LOGO,
-        '-filter_complex', f'[0:v]{cizim}[z];[2:v]scale=180:180[l];[z][l]overlay=x=W-w-80:y=210[v]',
+        '-filter_complex', f'[0:v]{cizim}[z];[2:v]scale=170:170[l];[z][l]overlay=x=W-w-70:y=200[v]',
         '-map', '[v]', '-map', '1:a', '-af', 'apad,aresample=44100', '-t', f'{toplam:.2f}',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-r', '30',
         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', CIKTI,
