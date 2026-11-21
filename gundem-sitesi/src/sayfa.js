@@ -40,7 +40,10 @@ h2.bolum{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(
 .one{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
 .one a{display:block;text-decoration:none;background:var(--vurgu-ac);border-radius:12px;padding:12px 14px}
 .one a strong{display:block;font:700 16px/1.3 Georgia,serif;margin-bottom:6px}.one a span{font-size:12.5px;color:var(--soluk)}
-article.haber{background:var(--kart);border:1px solid var(--cizgi);border-radius:14px;padding:16px;margin-bottom:12px}
+article.haber{background:var(--kart);border:1px solid var(--cizgi);border-radius:14px;padding:16px;margin-bottom:12px;display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start}
+.kapak img,.one img,.kapak-buyuk{display:block;width:100%;height:auto;aspect-ratio:1200/630;border-radius:10px;background:var(--cizgi)}
+.one img{margin-bottom:10px;border-radius:8px}.kapak-buyuk{margin:6px 0 16px;border-radius:14px}
+@media (max-width:600px){article.haber{grid-template-columns:1fr;gap:12px}}
 article.haber h3{font:700 19px/1.3 Georgia,"Times New Roman",serif;margin:0 0 6px}article.haber h3 a{text-decoration:none}
 article.haber h3 a:hover{text-decoration:underline}
 .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--soluk);margin-bottom:8px}
@@ -83,12 +86,12 @@ function kaynakSatiri(h) {
 
 export function haberKarti(h, simdi) {
   const { govde, etiketler } = metniAyir(h.metin);
-  return `<article class="haber"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(goreli(h.zaman, simdi))}</time>
+  return `<article class="haber"><a class="kapak" href="/haber/${h.id}" tabindex="-1" aria-hidden="true"><img src="/kapak/${h.id}.svg" alt="" loading="lazy" width="1200" height="630"></a><div class="icerik"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(goreli(h.zaman, simdi))}</time>
 ${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
 <h3><a href="/haber/${h.id}">${kac(h.baslik)}</a></h3>
 ${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
-${kaynakSatiri(h)}</article>`;
+${kaynakSatiri(h)}</div></article>`;
 }
 
 export function liste(haberler, { bosMesaj = 'Henüz haber yok. Gündem botu her yarım saatte yeni haberleri toplar.' } = {}) {
@@ -99,7 +102,7 @@ export function liste(haberler, { bosMesaj = 'Henüz haber yok. Gündem botu her
 export function oneCikanBlok(haberler) {
   if (!haberler.length) return '';
   return `<h2 class="bolum">Son 24 saatin öne çıkanları</h2><div class="one">${haberler.map((h) =>
-    `<a href="/haber/${h.id}"><strong>${kac(h.baslik)}</strong><span>${h.kaynak_sayisi} kaynakta · ${kac(goreli(h.zaman))}</span></a>`).join('')}</div>
+    `<a href="/haber/${h.id}"><img src="/kapak/${h.id}.svg" alt="" loading="lazy" width="1200" height="630"><strong>${kac(h.baslik)}</strong><span>${h.kaynak_sayisi} kaynakta · ${kac(goreli(h.zaman))}</span></a>`).join('')}</div>
 <h2 class="bolum">Son haberler</h2>`;
 }
 
@@ -117,7 +120,7 @@ export function detayGovde(h) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<div class="detay"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(tamTarih(h.zaman))}</time>
 ${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
-<h1>${kac(h.baslik)}</h1>${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
+<h1>${kac(h.baslik)}</h1><img class="kapak-buyuk" src="/kapak/${h.id}.svg" alt="${kac(h.baslik)}" width="1200" height="630">${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
 <h2 class="bolum">Kaynak</h2>
 <ul>${h.kaynaklar.map((k) => `<li>${kac(k.ad)}${k.dil ? ' (Türkçe çeviri)' : ''}</li>`).join('')}</ul>

@@ -99,3 +99,22 @@ test('site: yabancı haber rozeti ve bağlantısız kaynak', () => {
   assert.match(html, /Yabancı basından çeviri/);
   assert.doesNotMatch(html, /bbc\.co\.uk/);
 });
+
+// --- Kapak ---
+import { kapakSvg, satirla } from '../gundem-sitesi/src/kapak.js';
+
+test('kapak: başlık satırlara bölünür, kaçış yapılır, kaynak adı yazılır', () => {
+  assert.deepEqual(satirla('bir iki üç dört beş', 8, 4), ['bir iki', 'üç dört', 'beş']);
+  assert.equal(satirla('a b c d e f g h', 1, 2).length, 2);
+  const svg = kapakSvg({ id: 5, baslik: 'Merkez Bankası <faiz> kararını açıkladı & piyasalar', kaynaklar: [{ ad: 'TRT Haber' }], kaynak_sayisi: 1 });
+  assert.match(svg, /^<svg/);
+  assert.match(svg, /&lt;faiz&gt;/);
+  assert.match(svg, /Kaynak: TRT Haber/);
+  assert.match(kapakSvg({ id: 1, baslik: 'X', kaynaklar: [], yabanci: true }), /ÇEVİRİ/);
+});
+
+test('site: kartlarda ve haber sayfasında kapak var', () => {
+  const h = haberiCoz({ id: 9, baslik: 'Başlık', metin: 'Metin', kaynaklar: '[]', kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  assert.match(haberKarti(h), /\/kapak\/9\.svg/);
+  assert.match(detayGovde(h), /\/kapak\/9\.svg/);
+});

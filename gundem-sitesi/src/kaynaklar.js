@@ -7,7 +7,6 @@ export const KAYNAKLAR = [
   { id: 'aa', ad: 'Anadolu Ajansı', url: 'https://www.aa.com.tr/tr/rss/default?cat=guncel' },
   { id: 'ntv', ad: 'NTV', url: 'https://www.ntv.com.tr/gundem.rss' },
   { id: 'hurriyet', ad: 'Hürriyet', url: 'https://www.hurriyet.com.tr/rss/gundem' },
-  { id: 'milliyet', ad: 'Milliyet', url: 'https://www.milliyet.com.tr/rss/rssnew/gundemrss.xml' },
   { id: 'sabah', ad: 'Sabah', url: 'https://www.sabah.com.tr/rss/gundem.xml' },
   { id: 'haberturk', ad: 'Habertürk', url: 'https://www.haberturk.com/rss' },
   { id: 'cumhuriyet', ad: 'Cumhuriyet', url: 'https://www.cumhuriyet.com.tr/rss/son_dakika.xml' },
