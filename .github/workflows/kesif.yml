@@ -12,5 +12,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: node scraper/kesif.mjs
-      - uses: actions/upload-artifact@v4
+      - if: always()
+        uses: actions/upload-artifact@v4
         with: { name: kesif, path: kesif/ }

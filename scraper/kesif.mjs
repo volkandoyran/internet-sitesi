@@ -18,8 +18,9 @@ async function get(url) {
   } catch (e) { return { status: 0, text: '', err: e.message }; }
 }
 const uniq = (a) => [...new Set(a)];
+const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 mkdirSync('kesif', { recursive: true });
-for (const [id, [home, sample]] of Object.entries(STORES)) {
+for (const [id, [home, sample]] of Object.entries(STORES)) try {
   const out = [];
   const log = (...a) => out.push(a.join(' '));
   const robots = await get(home + '/robots.txt');
@@ -41,7 +42,7 @@ for (const [id, [home, sample]] of Object.entries(STORES)) {
   const h = await get(home);
   log('# ana sayfa', h.status, h.url, 'uzunluk', h.text.length);
   const links = uniq([...h.text.matchAll(/href=["']([^"'#]+)["']/g)].map((x) => x[1]));
-  links.filter((l) => /laptop|notebook|lapto|bilgisayar|komp|kompyut|компют|лаптоп|ypologist|pc|cpu|islemci|ekran|ssd|gpu|hardware|ram|anakart|epeksergast|karta|процесор|видео|monit/i.test(decodeURIComponent(l)))
+  links.filter((l) => /laptop|notebook|lapto|bilgisayar|komp|kompyut|компют|лаптоп|ypologist|pc|cpu|islemci|ekran|ssd|gpu|hardware|ram|anakart|epeksergast|karta|процесор|видео|monit/i.test(dec(l)))
     .slice(0, 120).forEach((l) => log('  link', l));
   const p = await get(sample);
   log('# örnek', sample, p.status, 'uzunluk', p.text.length);
@@ -51,4 +52,4 @@ for (const [id, [home, sample]] of Object.entries(STORES)) {
   log('  örnek sayfadaki bağlantı sayısı', hrefs.length); hrefs.slice(0, 80).forEach((l) => log('    a', l));
   writeFileSync(`kesif/${id}.txt`, out.join('\n'));
   console.log(id, robots.status, h.status, p.status);
-}
+} catch (e) { console.log(id, 'HATA', e.message); }
