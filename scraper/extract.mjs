@@ -92,9 +92,12 @@ export function extractProduct(html, fallbackCurrency) {
   let found = extractPrice(html, fallbackCurrency);
   if (!found) {
     // <span itemprop="price">309.90</span> ya da gizli fiyat alanı
-    const m = html.match(/itemprop=["']price["'][^>]*>\s*([\d.,]+)\s*</i) || html.match(/id=["']price_current["'][^>]*value=["']([\d.,]+)["']/i);
+    // Technopolis (Angular): <span class="price-value">178.90</span>; "Запитване/Inquiry" düğmesi = satışta değil
+    const m = html.match(/itemprop=["']price["'][^>]*>\s*([\d.,]+)\s*</i) || html.match(/id=["']price_current["'][^>]*value=["']([\d.,]+)["']/i)
+      || html.match(/class=["'][^"']*\bprice-value\b[^"']*["'][^>]*>\s*([\d][\d.,\s]*?)\s*</i);
     const price = m && parseNumber(m[1]);
-    if (price) found = { price, currency: meta(html, 'priceCurrency') || fallbackCurrency, in_stock: true };
+    const inquiry = />\s*(Запитване|Inquiry)\s*</i.test(html) && !/button-buy/i.test(html);
+    if (price) found = { price, currency: meta(html, 'priceCurrency') || fallbackCurrency, in_stock: !inquiry };
   }
   if (!name || !found) return null;
   return { name: name.slice(0, 300), brand: brand || null, mpn, image, ...found };

@@ -147,3 +147,14 @@ test('hata düzeltme oturumu: yanlış sınıflananlar', () => {
   assert.deepEqual(specsFromName('Xiaomi Redmi Note 13 Pro 8GB 256GB', { type: 'phone' }), { ram_gb: 8, storage_gb: 256 });
   assert.equal(specsFromName('HP Victus 16 i7-13700H 32GB 1TB RTX 4070', { type: 'laptop' }).storage_gb, 1000);
 });
+
+test('Technopolis (Angular) sayfasından ad ve fiyat', () => {
+  const html = `<html><head><meta property="og:title" content="Процесор AMD RYZEN 5 5600  AM4, 3.5 - 4.4 GHZ"><meta property="og:image" content="https://api.technopolis.bg/medias/500622.jpg"></head><body>
+  <div _ngcontent-ng-c1="" class="product-pdp__prices"><div class="ng-star-inserted">€ </div><button type="button" class="button-buy js-product__buy">Купи</button></div>
+  <span _ngcontent-ng-c588746692="" class="price-value">178.90</span></body></html>`;
+  const p = extractProduct(html, 'EUR');
+  assert.equal(p.price, 178.9);
+  assert.equal(p.currency, 'EUR');
+  assert.equal(p.in_stock, true);
+  assert.match(p.name, /RYZEN 5 5600/);
+});
