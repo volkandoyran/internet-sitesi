@@ -18,6 +18,13 @@
       "database_id": "2effe710-b0bc-4aea-aa03-39428de515d4"
     }
   ],
+  // PR önizleme derlemeleri (wrangler preview) canlı veritabanına dokunmasın diye ayrı,
+  // boş bir önizleme veritabanı kullanır; tablolar ilk istekte otomatik kurulur
+  "previews": {
+    "d1_databases": [
+      { "binding": "DB", "database_name": "ucfiyat-db-preview", "database_id": "eaa19e7e-b8f6-48ad-b9c4-df5747c9c22e" }
+    ]
+  },
   // schema.sql metin olarak içe aktarılır, tablolar ilk istekte otomatik kurulur
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "observability": {
