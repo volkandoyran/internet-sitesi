@@ -15,6 +15,8 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 
 Tamamen ücretsiz katmanlarda çalışır: Cloudflare Workers (site + API, statik dosyalar dahil, GitHub'dan otomatik yayın), Cloudflare D1 (veritabanı), GitHub Actions (testler, katalog tarama ve fiyat çekme).
 
+Şu an 0 TL'ye çalışır. Ücretsiz sınırlar, sınıra yaklaşıldığının nasıl anlaşılacağı ve para kazanılınca hangi sırayla ücretli plana geçileceği: [docs/ucretsiz-ve-ucretli.md](docs/ucretsiz-ve-ucretli.md).
+
 ## Kurulum (bir kez)
 
 Site, Cloudflare'in GitHub bağlantısıyla (Workers Builds) yayınlanır: `main` dalına her gönderimde Cloudflare siteyi kendisi derleyip yayınlar. İlk yayında D1 veritabanı otomatik oluşturulur, tablolar ve 20 satıcı ilk ziyarette otomatik kurulur.
