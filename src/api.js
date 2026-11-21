@@ -74,7 +74,7 @@ async function loadProducts(env, where = '', binds = []) {
     const list = (byProduct.get(p.id) || []).sort((a, b) => a.price_eur - b.price_eur);
     const inStock = list.filter((o) => o.in_stock !== 0);
     return { ...p, offers: list, best: (inStock[0] || list[0]) || null };
-  });
+  }).filter((p) => p.offers.length); // fiyatı olmayan ürün sitede gösterilmez
 }
 
 async function search(env, sp) {
@@ -276,6 +276,17 @@ async function admin(parts, method, request, env, url) {
     return json({ ok: true, updated: ok });
   }
 
+  if (res === 'catalog') {
+    if (method === 'GET') {
+      // Katalog tarayıcısı için: bilinen otomatik bağlantılar
+      const rows = (await env.DB.prepare(
+        `SELECT retailer_id, url, updated_at FROM offers WHERE manual = 0 AND url IS NOT NULL`
+      ).all()).results;
+      return json(rows);
+    }
+    if (method === 'POST') return json(await catalogUpsert(env, body));
+  }
+
   if (res === 'retailers') {
     if (method === 'GET') return json(await retailers(env));
     if (method === 'PUT') {
@@ -305,6 +316,75 @@ async function admin(parts, method, request, env, url) {
   }
 
   return fail('Bulunamadı', 404);
+}
+
+// Katalog tarayıcısından gelen ürünler: { rates, items: [{retailer_id, url, name, type, category, ..., match_key, price, currency, in_stock} | {retailer_id, url, error} | {retailer_id, url, gone}] }
+// Aynı eşleştirme anahtarına sahip ürün varsa yeni teklif ona bağlanır; yoksa yeni ürün açılır.
+async function catalogUpsert(env, body) {
+  const items = (body.items || []).filter((i) => i && i.retailer_id && /^https?:\/\//.test(i.url || '')).slice(0, 12); // ücretsiz planda istek başına sorgu sınırı var
+  const stmts = [];
+  for (const [cur, rate] of Object.entries(body.rates || {})) {
+    if (rate > 0) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
+  }
+  if (stmts.length) await env.DB.batch(stmts.splice(0));
+  const active = new Set((await retailers(env)).filter((r) => r.active).map((r) => r.id));
+  const now = new Date().toISOString();
+  const out = { added: 0, updated: 0, removed: 0, errors: 0, linked: 0 };
+  for (const it of items) {
+    if (!active.has(it.retailer_id)) continue;
+    const offer = await env.DB.prepare('SELECT id, product_id, manual FROM offers WHERE retailer_id = ? AND url = ?').bind(it.retailer_id, it.url).first();
+    if (it.gone) {
+      if (offer && !offer.manual) {
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM price_history WHERE offer_id = ?').bind(offer.id),
+          env.DB.prepare('DELETE FROM offers WHERE id = ?').bind(offer.id),
+          env.DB.prepare('DELETE FROM products WHERE id = ? AND NOT EXISTS (SELECT 1 FROM offers WHERE product_id = ?)').bind(offer.product_id, offer.product_id),
+        ]);
+        out.removed++;
+      }
+      continue;
+    }
+    if (it.error || !(it.price > 0)) {
+      if (offer) await env.DB.prepare('UPDATE offers SET last_error = ? WHERE id = ? AND manual = 0').bind(String(it.error || 'Fiyat bulunamadı').slice(0, 300), offer.id).run();
+      out.errors++;
+      continue;
+    }
+    const currency = it.currency || 'EUR';
+    const rate = currency === 'EUR' ? 1 : (body.rates || {})[currency] || (await rateFor(env, currency));
+    if (!rate) { out.errors++; continue; }
+    const eur = Math.round((it.price / rate) * 100) / 100;
+    if (offer) {
+      if (offer.manual) continue;
+      await env.DB.batch([
+        env.DB.prepare('UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, last_error = NULL, updated_at = ? WHERE id = ?')
+          .bind(it.price, currency, eur, it.in_stock === false ? 0 : 1, now, offer.id),
+        env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(offer.id, eur),
+      ]);
+      out.updated++;
+      continue;
+    }
+    // Yeni bağlantı: aynı model başka mağazada varsa ona bağla
+    let productId = null;
+    if (it.match_key) {
+      const p = await env.DB.prepare('SELECT id FROM products WHERE match_key = ? AND type = ? LIMIT 1').bind(it.match_key, it.type).first();
+      if (p) { productId = p.id; out.linked++; }
+    }
+    if (!productId) {
+      const p = cleanProduct(it);
+      p.match_key = it.match_key || null;
+      const keys = Object.keys(p).filter((k) => p[k] != null);
+      const row = await env.DB.prepare(`INSERT INTO products (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')}) RETURNING id`)
+        .bind(...keys.map((k) => p[k])).first();
+      productId = row.id;
+    }
+    const row = await env.DB.prepare(
+      `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at)
+       VALUES (?,?,?,?,?,?,?,0,?) RETURNING id`
+    ).bind(productId, it.retailer_id, it.url, it.price, currency, eur, it.in_stock === false ? 0 : 1, now).first();
+    await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(row.id, eur).run();
+    out.added++;
+  }
+  return { ok: true, ...out };
 }
 
 async function loadAllAdmin(env) {

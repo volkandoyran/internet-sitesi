@@ -8,9 +8,20 @@ let ready = null;
 function ensureSchema(env) {
   ready ||= (async () => {
     const t = await env.DB.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'").first();
-    if (t) return;
-    const stmts = SCHEMA.replace(/--[^\n]*/g, '').split(';').map((x) => x.trim()).filter(Boolean);
-    await env.DB.batch(stmts.map((q) => env.DB.prepare(q)));
+    if (!t) {
+      const stmts = SCHEMA.replace(/--[^\n]*/g, '').split(';').map((x) => x.trim()).filter(Boolean);
+      await env.DB.batch(stmts.map((q) => env.DB.prepare(q)));
+      return;
+    }
+    // Eski kurulumlar için: otomatik katalogla gelen sütun ve dizinler
+    const cols = (await env.DB.prepare('PRAGMA table_info(products)').all()).results.map((c) => c.name);
+    if (!cols.includes('match_key')) {
+      await env.DB.batch([
+        env.DB.prepare('ALTER TABLE products ADD COLUMN match_key TEXT'),
+        env.DB.prepare('CREATE INDEX IF NOT EXISTS products_match ON products(match_key)'),
+        env.DB.prepare('CREATE INDEX IF NOT EXISTS offers_url ON offers(retailer_id, url)'),
+      ]);
+    }
   })().catch((e) => { ready = null; throw e; });
   return ready;
 }

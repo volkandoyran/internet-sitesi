@@ -2,16 +2,33 @@ name: Fiyatları güncelle
 
 on:
   schedule:
-    - cron: '0 5 * * *'   # her gün 08:00 (Türkiye saati)
+    - cron: '0 3,9,15,21 * * *'   # günde 4 kez (Türkiye saatiyle 06, 12, 18, 24)
   workflow_dispatch:
+    inputs:
+      magaza:
+        description: 'Yalnızca bu mağaza (boş = hepsi)'
+        required: false
+      yeni_limit:
+        description: 'Mağaza başına yeni ürün sayfası sınırı'
+        required: false
+        default: '400'
+      kuru:
+        description: 'Deneme: siteye gönderme (1 = evet)'
+        required: false
+        default: '0'
+
+concurrency: { group: fiyat, cancel-in-progress: false }
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 150
     env:
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       SITE_URL: ${{ vars.SITE_URL }}
+      MAGAZA: ${{ inputs.magaza }}
+      YENI_LIMIT: ${{ inputs.yeni_limit }}
+      KURU: ${{ inputs.kuru }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,5 +39,8 @@ jobs:
             echo "::error::Depo ayarlarında SITE_URL değişkeni ve ADMIN_PASSWORD gizli anahtarı gerekli. README'deki kurulum adımlarına bakın."
             exit 1
           fi
-      - name: Fiyatları çek
+      - name: Mağaza kataloglarını tara (yeni ürünler + fiyatlar)
+        run: node scraper/katalog.mjs
+      - name: Elle eklenen bağlantıların fiyatlarını çek
+        if: inputs.kuru != '1'
         run: node scraper/scrape.mjs
