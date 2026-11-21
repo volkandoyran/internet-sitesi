@@ -127,6 +127,18 @@ async function loadAds() {
   document.querySelectorAll('body > .ad-slot').forEach((el) => { if (ads[el.dataset.slot]) placeAd(el, ads[el.dataset.slot]); });
 }
 
+// Seçilen türe uymayan filtreleri gizle (ör. telefonda ekran kartı, parçada RAM)
+function syncFilters() {
+  const f = $('#search').elements;
+  const t = f.type.value;
+  const group = t === 'part' ? 'part' : t === 'phone' || t === 'tablet' ? 'device' : t === 'all' ? 'all' : 'computer';
+  document.querySelectorAll('.filters [data-for]').forEach((el) => {
+    const show = group === 'all' ? !el.dataset.for.includes('part') : el.dataset.for.split(' ').includes(group);
+    el.hidden = !show;
+    if (!show) { const s = el.querySelector('select'); if (s) s.value = ''; }
+  });
+}
+$('#search').elements.type.addEventListener('change', syncFilters);
 $('#search').addEventListener('submit', (e) => { e.preventDefault(); search(); });
 $('#search').addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') search(); });
 document.querySelectorAll('.cur button').forEach((b) => b.addEventListener('click', () => setCurrency(b.dataset.cur)));
@@ -138,6 +150,7 @@ const narrow = matchMedia('(max-width: 720px)').matches;
 const init = new URLSearchParams(location.search);
 for (const [k, v] of init) { const f = $('#search').elements[k]; if (f) f.value = v; }
 if (init.get('cur') === 'TRY') currency = 'TRY';
+syncFilters();
 if (narrow && ![...init.keys()].some((k) => k !== 'q' && k !== 'cur')) $('.filter-box').open = false;
 // Telefonda arama yapınca klavyeyi kapat ve sonuçlara kaydır
 $('#search').addEventListener('submit', () => {

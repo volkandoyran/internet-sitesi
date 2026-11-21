@@ -58,7 +58,7 @@ const FIELDS = [
 ];
 function productForm(p = {}) {
   return `<div class="grid">${FIELDS.map(([k, label, t]) => t === 'type'
-    ? `<label class="f">${label}<select name="${k}">${[['laptop', 'Laptop'], ['desktop', 'Masaüstü'], ['part', 'Parça']].map(([v, l]) => `<option value="${v}" ${p[k] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`
+    ? `<label class="f">${label}<select name="${k}">${[['laptop', 'Laptop'], ['desktop', 'Masaüstü'], ['phone', 'Telefon'], ['tablet', 'Tablet'], ['part', 'Parça']].map(([v, l]) => `<option value="${v}" ${p[k] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`
     : `<label class="f">${label}<input name="${k}" type="${t}" ${t === 'number' ? 'step="any"' : ''} value="${esc(p[k])}"></label>`).join('')}</div>`;
 }
 const formData = (el) => Object.fromEntries(FIELDS.map(([k]) => [k, el.querySelector(`[name=${k}]`).value.trim()]));

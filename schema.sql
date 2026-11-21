@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS products (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,
   brand       TEXT,
-  type        TEXT NOT NULL CHECK (type IN ('laptop','desktop','part')),
+  type        TEXT NOT NULL CHECK (type IN ('laptop','desktop','part','phone','tablet')),
   category    TEXT,            -- parçalar için: cpu, gpu, ram, ssd, anakart, psu, monitor ...
   cpu         TEXT,
   cpu_score   INTEGER,         -- 0-100, boşsa isimden tahmin edilir
