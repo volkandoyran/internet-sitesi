@@ -33,11 +33,18 @@
 
   <main>
     <section class="intro">
-      <h1>Aynı bilgisayar,<br>üç ülkede kaça?</h1>
+      <h1>Aynı <span id="what">bilgisayar</span>,<br>üç ülkede kaça?</h1>
       <p>Türkiye, Yunanistan ve Bulgaristan'da mağazası da olan satıcıların fiyatlarını yan yana görün. Model adı yazın ya da ihtiyacınızı ve bütçenizi seçin.</p>
     </section>
 
+    <nav class="tabs" aria-label="Bölümler">
+      <button type="button" data-bolum="bilgisayar" aria-pressed="true">Bilgisayarlar</button>
+      <button type="button" data-bolum="parca" aria-pressed="false">Masaüstü parçaları</button>
+      <button type="button" data-bolum="mobil" aria-pressed="false">Telefon ve tablet</button>
+    </nav>
+
     <form id="search" class="search" autocomplete="off">
+      <input type="hidden" name="bolum" value="bilgisayar">
       <div class="q">
         <label for="q" class="sr">Model ya da özellik</label>
         <input id="q" name="q" type="search" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”">
@@ -46,16 +53,8 @@
       <details class="filter-box" open>
       <summary>Filtreler</summary>
       <div class="filters">
-        <label>Tür
-          <select name="type">
-            <option value="">Bilgisayar (laptop ve masaüstü)</option>
-            <option value="laptop">Laptop</option>
-            <option value="desktop">Masaüstü</option>
-            <option value="phone">Telefon</option>
-            <option value="tablet">Tablet</option>
-            <option value="part">Parça</option>
-            <option value="all">Hepsi</option>
-          </select>
+        <label data-for="computer device">Tür
+          <select name="type"></select>
         </label>
         <label data-for="part" hidden>Parça türü
           <select name="category">

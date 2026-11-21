@@ -91,12 +91,16 @@ async function search(env, sp) {
   };
   // Metindeki özellikler (ör. "16gb rtx 4060") boş filtreleri doldurur
   const parsed = parseQuery(q);
+  // Sitedeki bölüm seçiliyse metinden çıkan tür o bölümün dışına çıkamaz (bilgisayar bölümünde "iphone" telefon getirmez)
+  const ALLOWED = { bilgisayar: ['laptop', 'desktop'], parca: [], mobil: ['phone', 'tablet'] }[sp.get('bolum')];
+  if (ALLOWED && parsed.type && !ALLOWED.includes(parsed.type)) delete parsed.type;
   for (const k of Object.keys(parsed)) if (!filters[k]) filters[k] = parsed[k];
   // Tür seçilmediyse yalnızca hazır bilgisayarlar (laptop ve masaüstü) aranır; "all" her şeyi getirir
   if (!filters.type) filters.type = 'computer';
   if (filters.type === 'all') filters.type = null;
   if (filters.type !== 'part') filters.category = null;
-  const typeOk = (p) => !filters.type || (filters.type === 'computer' ? p.type === 'laptop' || p.type === 'desktop' : p.type === filters.type);
+  const GROUPS = { computer: ['laptop', 'desktop'], mobile: ['phone', 'tablet'] };
+  const typeOk = (p) => !filters.type || (GROUPS[filters.type] ? GROUPS[filters.type].includes(p.type) : p.type === filters.type);
 
   const all = await loadProducts(env);
   const priceIn = (p) => {
@@ -128,7 +132,7 @@ async function search(env, sp) {
     const partial = words.length
       ? all.filter((p) => words.some((w) => w.length > 2 && hay(p).includes(w)))
       : [];
-    const anchor = partial[0] || { ...filters, type: filters.type === 'computer' ? 'laptop' : filters.type };
+    const anchor = partial[0] || { ...filters, type: GROUPS[filters.type] ? GROUPS[filters.type][0] : filters.type };
     similar = all
       .filter((p) => budgetOk(p) && typeOk(p) && (!filters.category || p.category === filters.category))
       .map((p) => ({ p, d: distance(anchor, p) - (partial.includes(p) ? 1 : 0) }))
