@@ -1,0 +1,14 @@
+{
+  "name": "ucfiyat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "scrape": "node scraper/scrape.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "4.166.0"
+  }
+}
