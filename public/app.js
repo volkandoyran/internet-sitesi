@@ -12,9 +12,10 @@ function money(eur) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(eur);
 }
 const storage = (gb) => (gb >= 1024 ? `${+(gb / 1024).toFixed(1)} TB` : `${gb} GB`);
+const CATEGORY = { cpu: 'İşlemci', gpu: 'Ekran kartı', ram: 'RAM', ssd: 'SSD', hdd: 'Sabit disk', anakart: 'Anakart', psu: 'Güç kaynağı', kasa: 'Kasa', monitor: 'Monitör' };
 function specChips(p) {
   return [p.cpu, p.gpu, p.ram_gb && `${p.ram_gb} GB RAM`, p.storage_gb && storage(p.storage_gb),
-    p.screen_in && `${p.screen_in}"`, p.category].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
+    p.screen_in && `${p.screen_in}"`, CATEGORY[p.category] || p.category].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
 }
 
 function lanes(p) {
@@ -127,18 +128,40 @@ async function loadAds() {
   document.querySelectorAll('body > .ad-slot').forEach((el) => { if (ads[el.dataset.slot]) placeAd(el, ads[el.dataset.slot]); });
 }
 
-// Seçilen türe uymayan filtreleri gizle (ör. telefonda ekran kartı, parçada RAM)
+// Bölümler: bilgisayarlar, masaüstü parçaları, telefon ve tablet. Her bölüm kendi tür listesini ve filtrelerini gösterir.
+const SECTIONS = {
+  bilgisayar: { group: 'computer', what: 'bilgisayar', types: [['', 'Laptop ve masaüstü'], ['laptop', 'Laptop'], ['desktop', 'Masaüstü']],
+    placeholder: 'ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”' },
+  parca: { group: 'part', what: 'parça', types: [['part', 'Parça']], placeholder: 'ör. RTX 5070, Ryzen 7 7800X3D, 32GB DDR5' },
+  mobil: { group: 'device', what: 'telefon', types: [['mobile', 'Telefon ve tablet'], ['phone', 'Telefon'], ['tablet', 'Tablet']],
+    placeholder: 'ör. iPhone 16, Galaxy A17, iPad Air' },
+};
 function syncFilters() {
-  const f = $('#search').elements;
-  const t = f.type.value;
-  const group = t === 'part' ? 'part' : t === 'phone' || t === 'tablet' ? 'device' : t === 'all' ? 'all' : 'computer';
+  const group = SECTIONS[$('#search').elements.bolum.value].group;
   document.querySelectorAll('.filters [data-for]').forEach((el) => {
-    const show = group === 'all' ? !el.dataset.for.includes('part') : el.dataset.for.split(' ').includes(group);
+    const show = el.dataset.for.split(' ').includes(group);
     el.hidden = !show;
-    if (!show) { const s = el.querySelector('select'); if (s) s.value = ''; }
+    if (!show && el.querySelector('select') && el.querySelector('select').name !== 'type') el.querySelector('select').value = '';
   });
 }
-$('#search').elements.type.addEventListener('change', syncFilters);
+function setSection(name, keepType) {
+  const sec = SECTIONS[name] || SECTIONS.bilgisayar;
+  const f = $('#search').elements;
+  f.bolum.value = SECTIONS[name] ? name : 'bilgisayar';
+  const prev = f.type.value;
+  f.type.innerHTML = sec.types.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  if (keepType && sec.types.some(([v]) => v === prev)) f.type.value = prev;
+  $('#q').placeholder = sec.placeholder;
+  $('#what').textContent = sec.what;
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.bolum === f.bolum.value)));
+  syncFilters();
+}
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.bolum === $('#search').elements.bolum.value) return;
+  $('#q').value = '';
+  setSection(b.dataset.bolum);
+  search();
+}));
 $('#search').addEventListener('submit', (e) => { e.preventDefault(); search(); });
 $('#search').addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') search(); });
 document.querySelectorAll('.cur button').forEach((b) => b.addEventListener('click', () => setCurrency(b.dataset.cur)));
@@ -148,10 +171,11 @@ const narrow = matchMedia('(max-width: 720px)').matches;
 
 // Adres çubuğundaki aramayı geri yükle
 const init = new URLSearchParams(location.search);
-for (const [k, v] of init) { const f = $('#search').elements[k]; if (f) f.value = v; }
+const startType = init.get('type');
+setSection(init.get('bolum') || ({ part: 'parca', phone: 'mobil', tablet: 'mobil', mobile: 'mobil' }[startType]) || 'bilgisayar');
+for (const [k, v] of init) { const f = $('#search').elements[k]; if (f && k !== 'bolum') f.value = v; }
 if (init.get('cur') === 'TRY') currency = 'TRY';
-syncFilters();
-if (narrow && ![...init.keys()].some((k) => k !== 'q' && k !== 'cur')) $('.filter-box').open = false;
+if (narrow && ![...init.keys()].some((k) => !['q', 'cur', 'bolum', 'type'].includes(k))) $('.filter-box').open = false;
 // Telefonda arama yapınca klavyeyi kapat ve sonuçlara kaydır
 $('#search').addEventListener('submit', () => {
   if (!narrow) return;

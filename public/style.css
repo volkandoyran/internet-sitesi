@@ -52,7 +52,11 @@ a { color: inherit; }
 }
 .intro p { max-width: 58ch; color: var(--muted); font-size: 18px; margin: 18px 0 0; }
 
-.search { margin: 28px 0 20px; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 24px 0 0; max-width: 620px; }
+.tabs button { font: inherit; font-size: 15px; font-weight: 700; line-height: 1.15; color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px; min-height: 48px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.search { margin: 16px 0 20px; }
 .q { display: flex; gap: 8px; }
 .q input {
   flex: 1; min-width: 0; font: inherit; font-size: 18px; padding: 14px 16px;
