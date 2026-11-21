@@ -55,6 +55,12 @@ test('kuru denemede yanlış sınıflananlar', () => {
   assert.deepEqual(classify('othoni asus tuf gaming vg27aqa1a 27 quad hd 170hz black'), { type: 'part', category: 'monitor' });
   assert.deepEqual(classify('PSU THERMALTAKE TOUGHPOWER GF3 80 PLUS GOLD ACTIVE PFC 1200W'), { type: 'part', category: 'psu' });
   assert.deepEqual(classify('ASUS TUF Gaming GT502 Horizon Siyah Tempered Glass USB 3.2 ATX Mid Tower Kasa'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('ASUS Prime A620M-K AM5 DDR5 6400 Hdmi Vga M2 USB3.2 Aura RGB mATX Anakart'), { type: 'part', category: 'anakart' });
+  assert.deepEqual(classify('VGA BIOSTAR RADEON RX560 4GB GDDR5'), { type: 'part', category: 'gpu' });
+  assert.deepEqual(classify('CASE DEEPCOOL MATREXX 40 3FS GAMING MIDI TOWER RGB BLACK'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('Кутия за компютър Lian Li Lancool 207, ATX, черна'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('PSU FSP SP500-A 450W ATX'), { type: 'part', category: 'psu' });
+  assert.deepEqual(classify('Настолен компютър Lenovo IdeaCentre 3'), { type: 'desktop', category: null });
   assert.deepEqual(classify('AOC 25G4KUR 24.5" 420Hz 1ms HDMI DP Fast IPS Gaming Monitör'), { type: 'part', category: 'monitor' });
   for (const n of [
     'OLYMPIA CPD-425 ΦΟΡΗΤΗ ΑΡΙΘΜΟΜΗΧΑΝΗ ΜΕ ΤΑΙΝΙΑ', 'MACLEAN MC-851 ΒΑΣΗ ΣΤΗΡΙΞΗΣ DESKTOP 10KG',
@@ -63,5 +69,11 @@ test('kuru denemede yanlış sınıflananlar', () => {
     'AKYGA AK-ND-73 ZEBRA POWER SUPPLY 24V / 4.17A 100W 6.3 X 3.0', 'Раница за лаптоп Asus ROG BP1500G, до 15.6"',
     'Почистващ комплект за LCD монитор', 'Предпазен протектор за Apple MacBook 12, Ultra Thin PC Case',
     'ASUS TUF Gaming TF120 ARGB 120mm Beyaz Üçlü Kasa Fanı', 'HP Scanjet 2400', 'HP CTRG N339 BLK C8767EE',
+    'Компютърно бюро Carmen CR-118 E, ПДЧ, 150 x 70 cm', 'Архивна кутия за документи, 350х250х100 mm, бяла', 'Филтър за компютърна кутия Lian Li Lancool III LAN3-1W, бял',
+    'Поставка за PC кутия NewStar CPU-M100BLACK, мобилна', 'Кутия Asus ProArt PA40SU, за M.2 (2230/2280) SSD, NVMe, USB 4 Type-C', 'Кутия 2.5" (6.35 cm), SATA, USB3.0, черна',
+    'HONEYWELL ΜΟΝΑΔΑ ΤΡΟΦΟΔΟΤΙΚΟΥ 12V DC/500 MA', 'HAMA 220889 UNIVERSAL SCREEN SHELF FOR TV AND MONITORS, 30.0 X 12.7 CM', 'HAMA 200018 UNIVERSAL USB-C CAR NOTEBOOK POWER SUPP. UNIT',
+    'HAMA 101772-216530 NICE NOTEBOOK HARDCASE UP TO 40 CM (15.6) BLACK', 'HAMA 200129 ALL IN ONE USB CARD READER USB-A USB 2.0', 'G-ROC TB-30SA LED NOTEBOOK MONITOR LIGHT BAR 33CM',
+    'HAMA 200760 USB HARD DISK HOUSING FOR 2.5 SSD AND HDD HARD DISKS', 'HAMA 200343 CONVERTER HDMI TO VGA', 'HI-DI-HI LB-01 LAPTOP MESSENGER 15.4"',
+    'Barebone сървър Asus RS521A-E12-RS12U', 'KVM суич Aten CS1732B', 'Офис бюро RFG Lisabon (DG02-D0116HB)',
   ]) assert.equal(classify(n), null, n);
 });

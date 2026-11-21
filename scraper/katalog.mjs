@@ -66,7 +66,7 @@ async function rates() {
 }
 
 async function post(items, rateMap, stat) {
-  if (DRY) { for (const it of items) console.log('  [kuru]', JSON.stringify(it).slice(0, 400)); return; }
+  if (DRY) { for (const it of items) console.log('  [kuru]', JSON.stringify(it).slice(0, 700)); return; }
   for (let i = 0; i < items.length; i += 10) {
     const res = await fetch(`${SITE}/api/admin/catalog`, {
       method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
@@ -114,7 +114,13 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
         const html = await fetchText(url);
         const p = extractProduct(html);
         if (!p) { if (DRY) console.log('  [bilgi yok]', url, html.length, (html.match(/<title>([^<]{0,100})/) || [])[1]); throw new Error('ürün bilgisi bulunamadı'); }
-        const kind = classify(p.name) || (cfg.kind && !isExcluded(p.name) && cfg.kind(url)) || null;
+        let kind = classify(p.name) || (cfg.kind && !isExcluded(p.name) && cfg.kind(url)) || null;
+        // Fiyatı türüne göre çok düşükse aksesuardır (ör. 8 € "laptop" kılıfı)
+        if (kind && p.price) {
+          const eur = p.currency === 'TRY' ? (rateMap.TRY ? p.price / rateMap.TRY : null) : p.price;
+          const min = ['laptop', 'desktop'].includes(kind.type) ? 150 : kind.category === 'monitor' ? 50 : 15;
+          if (eur != null && eur < min) kind = null;
+        }
         if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); continue; }
         items.push({
           retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
