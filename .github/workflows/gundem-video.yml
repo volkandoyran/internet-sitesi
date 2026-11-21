@@ -7,12 +7,17 @@ name: Gündem kısa videoları
 on:
   schedule:
     - cron: '20 5,9,13,17 * * *'   # günde 4 kez (Türkiye saatiyle 08:20, 12:20, 16:20, 20:20)
+    - cron: '50 7,15 * * *'        # Instagram fotoğraf gönderisi, günde 2 kez (10:50, 18:50)
   workflow_dispatch:
     inputs:
       kuru:
         description: 'Deneme: siteye bağlanma, örnek haberle yalnızca video üret (1 = evet)'
         required: false
         default: '0'
+      mod:
+        description: 'video ya da foto (Instagram görsel gönderisi)'
+        required: false
+        default: 'video'
   pull_request:
     paths: ['gundem-sitesi/video/**', '.github/workflows/gundem-video.yml']
 
@@ -28,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      MOD: ${{ github.event.schedule == '50 7,15 * * *' && 'foto' || inputs.mod || 'video' }}
       KURU: ${{ github.event_name == 'pull_request' && '1' || inputs.kuru || '0' }}
       GUNDEM_URL: ${{ vars.GUNDEM_URL || 'https://gundem-sitesi.vitrin-web.workers.dev' }}
       VIDEO_ANAHTAR: ${{ secrets.VIDEO_ANAHTAR }}
@@ -45,10 +51,13 @@ jobs:
       - name: FFmpeg ve yazı tipi
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
       - name: Piper (ücretsiz Türkçe seslendirme)
+        if: env.MOD != 'foto'
         run: pip install -q piper-tts==1.2.0
       - uses: actions/cache@v4
+        if: env.MOD != 'foto'
         with: { path: ~/piper, key: "piper-${{ env.PIPER_SES }}" }
       - name: Türkçe ses modeli
+        if: env.MOD != 'foto'
         run: |
           mkdir -p ~/piper && cd ~/piper
           IFS=- read -r DIL KISI KALITE <<< "$PIPER_SES"
@@ -56,8 +65,11 @@ jobs:
           [ -f "$PIPER_SES.onnx" ] || curl -fsSL -o "$PIPER_SES.onnx" "$TABAN.onnx"
           [ -f "$PIPER_SES.onnx.json" ] || curl -fsSL -o "$PIPER_SES.onnx.json" "$TABAN.onnx.json"
           echo "PIPER_MODEL=$HOME/piper/$PIPER_SES.onnx" >> "$GITHUB_ENV"
-      - name: Video üret ve paylaş
+      - name: Video ya da görsel üret ve paylaş
         run: python3 gundem-sitesi/video/uret.py
+      - name: Görsel denemesi (yalnızca PR)
+        if: github.event_name == 'pull_request'
+        run: MOD=foto python3 gundem-sitesi/video/uret.py
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: video, path: video.mp4, if-no-files-found: ignore, retention-days: 3 }
+        with: { name: cikti, path: "video.mp4\ngorsel.jpg", if-no-files-found: ignore, retention-days: 3 }

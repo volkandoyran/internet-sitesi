@@ -9,6 +9,7 @@ const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Nu
 
 export const videoAyarlari = (env) => ({
   gunluk: sayi(env.VIDEO_GUNLUK, 4),          // 24 saatte en fazla video
+  gorselGunluk: sayi(env.GORSEL_GUNLUK, 2),   // 24 saatte en fazla Instagram fotoğraf gönderisi
   saat: sayi(env.VIDEO_SAAT, 8),              // bundan eski haberden video yapılmaz
   enAzKaynak: sayi(env.VIDEO_EN_AZ_KAYNAK, 2),
   saklaSaat: sayi(env.VIDEO_SAKLA_SAAT, 48),  // KV'deki dosya bu süre sonra kendiliğinden silinir
@@ -127,23 +128,25 @@ async function yetkili(env, req) {
 
 const iso = (ms) => new Date(ms).toISOString();
 
-async function siradaki(env, simdi = Date.now()) {
+async function siradaki(env, tur = 'video', simdi = Date.now()) {
   const a = videoAyarlari(env);
   if (env.OTOMATIK_PAYLASIM === '0') return { neden: 'otomatik paylaşım kapalı (OTOMATIK_PAYLASIM=0)' };
-  const bugun = (await env.DB.prepare("SELECT COUNT(*) AS n FROM videolar WHERE zaman >= ? AND durum != 'hata'")
-    .bind(iso(simdi - 24 * SAAT)).first()).n;
-  if (bugun >= a.gunluk) return { neden: `günlük sınır doldu (${bugun}/${a.gunluk})` };
+  const sinir = tur === 'foto' ? a.gorselGunluk : a.gunluk;
+  const bugun = (await env.DB.prepare("SELECT COUNT(*) AS n FROM videolar WHERE zaman >= ? AND durum != 'hata' AND tur = ?")
+    .bind(iso(simdi - 24 * SAAT), tur).first()).n;
+  if (bugun >= sinir) return { neden: `günlük sınır doldu (${tur} ${bugun}/${sinir})` };
   const adaylar = (await env.DB.prepare(`SELECT h.* FROM haberler h WHERE h.metin IS NOT NULL AND h.ilk_gorulme >= ?
     AND h.kaynak_sayisi >= ? AND NOT EXISTS (SELECT 1 FROM videolar v WHERE v.haber_id = h.id)
     ORDER BY h.kaynak_sayisi DESC, h.ilk_gorulme DESC LIMIT 40`).bind(iso(simdi - a.saat * SAAT), a.enAzKaynak).all()).results;
   const h = adaylar.find((x) => videoyaUygun(x, a));
   if (!h) return { neden: 'uygun haber yok' };
-  await env.DB.prepare("INSERT INTO videolar (haber_id, durum, zaman) VALUES (?, 'uretiliyor', ?)").bind(h.id, iso(simdi)).run();
+  await env.DB.prepare("INSERT INTO videolar (haber_id, durum, zaman, tur) VALUES (?, 'uretiliyor', ?, ?)").bind(h.id, iso(simdi), tur).run();
   return {
     haber: {
       id: h.id,
       baslik: h.baslik,
       seslendirme: seslendirme(h),
+      govde: nokta(hashtagsiz(h.metin).replace(/…$/, '.')),
       kaynak: `Kaynak: ${kaynakAdlari(h).join(', ')}`,
       videoBasligi: videoBasligi(h),
       aciklama: videoAciklamasi(h),
@@ -153,14 +156,16 @@ async function siradaki(env, simdi = Date.now()) {
 
 const PLATFORM = new Set(['youtube', 'instagram', 'tiktok']);
 
-// /api/video/* ve /video/<id>.mp4 isteklerini karşılar; başka yolsa null döner.
+const UZANTI_TURU = { mp4: 'video/mp4', jpg: 'image/jpeg' };
+
+// /api/video/* ve /video/<id>.mp4|jpg isteklerini karşılar; başka yolsa null döner.
 export async function videoIstek(req, env, yol) {
-  const dosya = yol.match(/^\/video\/(\d+)\.mp4$/);
+  const dosya = yol.match(/^\/video\/(\d+)\.(mp4|jpg)$/);
   if (dosya && (req.method === 'GET' || req.method === 'HEAD')) {
-    const veri = env.VIDEO && (await env.VIDEO.get(`${dosya[1]}.mp4`, 'arrayBuffer'));
+    const veri = env.VIDEO && (await env.VIDEO.get(`${dosya[1]}.${dosya[2]}`, 'arrayBuffer'));
     if (!veri) return new Response('Bulunamadı', { status: 404 });
     const n = veri.byteLength;
-    const h = new Headers({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600' });
+    const h = new Headers({ 'content-type': UZANTI_TURU[dosya[2]], 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600' });
     const r = (req.headers.get('range') || '').match(/^bytes=(\d*)-(\d*)$/);
     if (r && (r[1] || r[2])) {
       let bas = r[1] ? Number(r[1]) : n - Number(r[2]);
@@ -178,7 +183,10 @@ export async function videoIstek(req, env, yol) {
   if (!yol.startsWith('/api/video')) return null;
   if (!(await yetkili(env, req))) return Response.json({ hata: 'yetkisiz' }, { status: 401 });
 
-  if (yol === '/api/video/sira' && req.method === 'POST') return Response.json(await siradaki(env));
+  if (yol === '/api/video/sira' && req.method === 'POST') {
+    const tur = new URL(req.url).searchParams.get('tur') === 'foto' ? 'foto' : 'video';
+    return Response.json(await siradaki(env, tur));
+  }
 
   const yukle = yol.match(/^\/api\/video\/(\d+)\/dosya$/);
   if (yukle && req.method === 'PUT') {
@@ -189,9 +197,10 @@ export async function videoIstek(req, env, yol) {
     const veri = await req.arrayBuffer();
     // KV değer sınırı 25 MB; bu videolar genelde 1-5 MB
     if (!veri.byteLength || veri.byteLength > 24e6) return Response.json({ hata: 'dosya boyutu geçersiz' }, { status: 413 });
-    await env.VIDEO.put(`${id}.mp4`, veri, { expirationTtl: Math.max(60, videoAyarlari(env).saklaSaat * 3600) });
+    const uzanti = (req.headers.get('content-type') || '').startsWith('image/jpeg') ? 'jpg' : 'mp4';
+    await env.VIDEO.put(`${id}.${uzanti}`, veri, { expirationTtl: Math.max(60, videoAyarlari(env).saklaSaat * 3600) });
     await env.DB.prepare("UPDATE videolar SET durum = 'yuklendi', dosya = 1 WHERE haber_id = ?").bind(id).run();
-    return Response.json({ url: `${new URL(req.url).origin}/video/${id}.mp4` });
+    return Response.json({ url: `${new URL(req.url).origin}/video/${id}.${uzanti}` });
   }
 
   const sonuc = yol.match(/^\/api\/video\/(\d+)\/sonuc$/);
@@ -217,24 +226,24 @@ const kacis = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;',
 // Son üretilen videolar: telefondan izle, indir, açıklamayı kopyala (hesaplar bağlanana kadar elle paylaşım için)
 async function videoListesi(env) {
   const a = videoAyarlari(env);
-  const l = (await env.DB.prepare(`SELECT v.haber_id, v.zaman, h.baslik, h.metin, h.kaynaklar,
+  const l = (await env.DB.prepare(`SELECT v.haber_id, v.zaman, v.tur, h.baslik, h.metin, h.kaynaklar,
       (SELECT group_concat(s.platform || ':' || s.durum) FROM paylasimlar s WHERE s.haber_id = v.haber_id AND s.platform IN ('youtube','instagram','tiktok')) AS paylasim
     FROM videolar v JOIN haberler h ON h.id = v.haber_id WHERE v.dosya = 1 AND v.zaman >= ? ORDER BY v.zaman DESC LIMIT 30`)
     .bind(iso(Date.now() - a.saklaSaat * SAAT)).all()).results;
-  const kart = (v) => `<article><h2>${kacis(v.baslik)}</h2>
-<video controls preload="metadata" playsinline src="/video/${v.haber_id}.mp4"></video>
+  const kart = (v) => { const foto = v.tur === 'foto'; const yol = `/video/${v.haber_id}.${foto ? 'jpg' : 'mp4'}`; return `<article><h2>${kacis(v.baslik)}</h2>
+${foto ? `<img src="${yol}" alt="" loading="lazy">` : `<video controls preload="metadata" playsinline src="${yol}"></video>`}
 <p class="m">${kacis(new Date(v.zaman).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' }))}${v.paylasim ? ` · ${kacis(v.paylasim.replace(/:paylasildi/g, ' ✓').replace(/:hata/g, ' ✗'))}` : ''}</p>
-<a class="b" href="/video/${v.haber_id}.mp4" download="gundem-${v.haber_id}.mp4">Videoyu indir</a>
+<a class="b" href="${yol}" download="gundem-${v.haber_id}.${foto ? 'jpg' : 'mp4'}">${foto ? 'Görseli' : 'Videoyu'} indir</a>
 <textarea readonly rows="7">${kacis(videoAciklamasi(v))}</textarea>
-<button type="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Kopyalandı'">Açıklamayı kopyala</button></article>`;
+<button type="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Kopyalandı'">Açıklamayı kopyala</button></article>`; };
   const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Videolar · ${kacis(env.SITE_ADI || 'Gündem Özeti')}</title><style>
 body{margin:0;font:16px/1.5 system-ui,sans-serif;background:#0b1220;color:#e5e7eb}main{max-width:560px;margin:0 auto;padding:16px}
 h1{font-size:22px}article{background:#162036;border-radius:12px;padding:16px;margin:0 0 20px}h2{font-size:17px;margin:0 0 10px}
-video{width:100%;aspect-ratio:9/16;max-height:70vh;background:#000;border-radius:8px}.m{color:#9ca3af;font-size:13px;margin:6px 0 10px}
+img{width:100%;border-radius:8px;display:block}video{width:100%;aspect-ratio:9/16;max-height:70vh;background:#000;border-radius:8px}.m{color:#9ca3af;font-size:13px;margin:6px 0 10px}
 textarea{width:100%;box-sizing:border-box;margin:10px 0 6px;background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px;font-size:14px;line-height:1.4;font-family:inherit}
 a.b,button{display:inline-block;background:#d92a2a;color:#fff;border:0;border-radius:8px;padding:10px 14px;font:600 15px system-ui;text-decoration:none;cursor:pointer}
-</style></head><body><main><h1>Son videolar</h1><p class="m">Videolar ${a.saklaSaat} saat saklanır. Hesaplar bağlı değilken buradan indirip elle paylaşabilirsin.</p>
-${l.length ? l.map(kart).join('\n') : '<p>Henüz video yok. Video işi günde 4 kez çalışır (08:20, 12:20, 16:20, 20:20).</p>'}</main></body></html>`;
+</style></head><body><main><h1>Son videolar ve görseller</h1><p class="m">Dosyalar ${a.saklaSaat} saat saklanır. Hesaplar bağlı değilken buradan indirip elle paylaşabilirsin.</p>
+${l.length ? l.map(kart).join('\n') : '<p>Henüz video yok. Video işi günde 4 kez (08:20, 12:20, 16:20, 20:20), görsel işi 2 kez (10:50, 18:50) çalışır.</p>'}</main></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }

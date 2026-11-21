@@ -27,7 +27,8 @@ G, Y = 1080, 1920
 FONT = 'DejaVu Sans'
 # Hesabın logosu; her videonun sağ üst köşesine küçük olarak eklenir
 LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
-CIKTI = os.environ.get('CIKTI', 'video.mp4')
+MOD = os.environ.get('MOD') or 'video'   # 'video' (Shorts/Reels) ya da 'foto' (Instagram görsel gönderisi)
+CIKTI = os.environ.get('CIKTI') or ('gorsel.jpg' if MOD == 'foto' else 'video.mp4')
 
 ORNEK = {
     'id': 0,
@@ -35,6 +36,7 @@ ORNEK = {
     'seslendirme': "İstanbul'da hafta sonu sağanak yağış bekleniyor. Meteoroloji, cumartesi öğleden sonra başlayacak yağışın "
                    "pazar sabahına kadar aralıklarla süreceğini açıkladı. Kaynak: Anadolu Ajansı, NTV.",
     'kaynak': 'Kaynak: Anadolu Ajansı, NTV',
+    'govde': 'Meteoroloji, cumartesi öğleden sonra başlayacak yağışın pazar sabahına kadar aralıklarla süreceğini açıkladı.',
     'videoBasligi': "İstanbul'da hafta sonu sağanak yağış bekleniyor #Shorts",
     'aciklama': 'Deneme videosu.',
 }
@@ -212,6 +214,67 @@ def video_uret(haber, klasor):
     log(f'Video hazır: {CIKTI} ({toplam:.1f} sn, {os.path.getsize(CIKTI) / 1e6:.1f} MB)')
 
 
+def foto_uret(haber, klasor):
+    """Instagram için 4:5 (1080x1350) logolu haber görseli."""
+    gy = 1350
+    baslik = kaydir(haber['baslik'], 22)
+    if len(baslik) > 5:
+        baslik = baslik[:5]
+        baslik[-1] = baslik[-1].rstrip('.,;:') + '…'
+    govde = kaydir(haber.get('govde') or '', 36)
+    if len(govde) > 7:
+        govde = govde[:7]
+        govde[-1] = govde[-1].rstrip('.,;:') + '…'
+    by = 270 + len(baslik) * 74 + 60
+    alt = os.path.join(klasor, 'foto.ass')
+    satirlar = [
+        '[Script Info]', 'ScriptType: v4.00+', f'PlayResX: {G}', f'PlayResY: {gy}', 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
+        '[V4+ Styles]',
+        'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, '
+        'StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+        f'Style: Etiket,{FONT},42,&H00FFFFFF,&H00FFFFFF,&H002A2AD9,&H002A2AD9,1,0,0,0,100,100,4,0,3,16,0,7,90,90,0,1',
+        f'Style: Baslik,{FONT},66,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
+        f'Style: Govde,{FONT},44,&H00E5E7EB,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1',
+        f'Style: Kaynak,{FONT},36,&H00B8B8B8,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,1,90,90,0,1',
+        '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+        'Dialogue: 0,0:00:00.00,0:00:05.00,Etiket,,0,0,0,,{\\pos(90,140)}GÜNDEM',
+        'Dialogue: 0,0:00:00.00,0:00:05.00,Baslik,,0,0,0,,{\\pos(90,270)}' + '\\N'.join(ass_kac(x) for x in baslik),
+        f'Dialogue: 0,0:00:00.00,0:00:05.00,Govde,,0,0,0,,{{\\pos(90,{by})}}' + '\\N'.join(ass_kac(x) for x in govde),
+        'Dialogue: 0,0:00:00.00,0:00:05.00,Kaynak,,0,0,0,,{\\pos(90,1260)}' + ass_kac(haber['kaynak']),
+    ]
+    with open(alt, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(satirlar) + '\n')
+    arka = f'gradients=s={G}x{gy}:c0=0x0b1220:c1=0x1d2a44:x0=0:y0=0:x1=0:y1={gy}:speed=0.0001:r=1:d=1'
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', arka, '-i', LOGO,
+        '-filter_complex', f'[0:v]drawbox=x=90:y=1200:w={G - 180}:h=2:color=0x3a4a66:t=fill,ass={alt}[z];'
+                           f'[1:v]scale=160:160[l];[z][l]overlay=x=W-w-70:y=100[v]',
+        '-map', '[v]', '-frames:v', '1', '-q:v', '2', CIKTI,
+    ], check=True)
+    log(f'Görsel hazır: {CIKTI} ({os.path.getsize(CIKTI) / 1e3:.0f} KB)')
+
+
+def instagram_foto(haber, gorsel_url):
+    host = os.environ.get('IG_GRAPH') or 'https://graph.facebook.com/v23.0'
+    kul, tok = os.environ['IG_USER_ID'], os.environ['IG_ACCESS_TOKEN']
+    s, _, g = istek(f'{host}/{kul}/media', method='POST', veri=urllib.parse.urlencode({
+        'image_url': gorsel_url, 'caption': haber['aciklama'][:2100], 'access_token': tok}).encode(),
+        basliklar={'content-type': 'application/x-www-form-urlencoded'})
+    kap = jsonla(g).get('id')
+    if s != 200 or not kap:
+        raise RuntimeError(f'Instagram görsel: {jsonla(g)}')
+    for _ in range(12):
+        _, _, g = istek(f'{host}/{kap}?fields=status_code&access_token={urllib.parse.quote(tok)}')
+        if jsonla(g).get('status_code') in (None, 'FINISHED'):
+            break
+        time.sleep(5)
+    s, _, g = istek(f'{host}/{kul}/media_publish', method='POST', veri=urllib.parse.urlencode({
+        'creation_id': kap, 'access_token': tok}).encode(), basliklar={'content-type': 'application/x-www-form-urlencoded'})
+    if s != 200:
+        raise RuntimeError(f'Instagram yayın: {jsonla(g)}')
+    log('Instagram görsel: paylaşıldı', jsonla(g).get('id'))
+
+
 # ---------- platformlar ----------
 
 def youtube_yukle(haber, dosya):
@@ -273,20 +336,20 @@ def main():
         haber = ORNEK
     else:
         os.environ.setdefault('GUNDEM_URL', 'https://gundem-sitesi.vitrin-web.workers.dev')
-        s, _, g = site('/api/video/sira', method='POST')
+        s, _, g = site(f'/api/video/sira?tur={MOD}', method='POST')
         d = jsonla(g)
         if s != 200:
             log('Sıra alınamadı:', s, d)
             return 1
         if not d.get('haber'):
-            log('Video yok:', d.get('neden'))
+            log('İş yok:', d.get('neden'))
             return 0
         haber = d['haber']
     log('Haber:', haber['baslik'])
 
     with tempfile.TemporaryDirectory() as k:
         try:
-            video_uret(haber, k)
+            (foto_uret if MOD == 'foto' else video_uret)(haber, k)
         except Exception as e:
             if not kuru:
                 sonuc_bildir(haber['id'], 'uretim', str(e))
@@ -296,7 +359,7 @@ def main():
 
     with open(CIKTI, 'rb') as f:
         s, _, g = site(f"/api/video/{haber['id']}/dosya", method='PUT', veri=f.read(),
-                       basliklar={'content-type': 'video/mp4'}, zaman=300)
+                       basliklar={'content-type': 'image/jpeg' if MOD == 'foto' else 'video/mp4'}, zaman=300)
     if s != 200:
         sonuc_bildir(haber['id'], 'uretim', f'yükleme: {s} {jsonla(g)}')
         log('Video siteye yüklenemedi:', s, jsonla(g))
@@ -305,7 +368,8 @@ def main():
     log('Video adresi:', video_url)
 
     hatali = 0
-    platformlar = [
+    ig = all(os.environ.get(x) for x in ('IG_USER_ID', 'IG_ACCESS_TOKEN'))
+    platformlar = [('instagram', ig, lambda: instagram_foto(haber, video_url))] if MOD == 'foto' else [
         ('youtube', all(os.environ.get(x) for x in ('YT_CLIENT_ID', 'YT_CLIENT_SECRET', 'YT_REFRESH_TOKEN')), lambda: youtube_yukle(haber, CIKTI)),
         ('instagram', all(os.environ.get(x) for x in ('IG_USER_ID', 'IG_ACCESS_TOKEN')), lambda: instagram_paylas(haber, video_url)),
     ]

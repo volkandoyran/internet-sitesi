@@ -78,3 +78,15 @@ test('GitHub OIDC jetonu: yalnızca bu deponun main dalındaki video iş akış�
   assert.equal(await githubJetonuDogru({}, await jetonUret(baska.privateKey), secenek), false, 'yanlış imza');
   assert.equal(await githubJetonuDogru({}, 'bozuk.jeton', secenek), false);
 });
+
+test('görsel (jpg) dosyası doğru türle sunulur, yetkisiz sıra isteği reddedilir', async () => {
+  const { videoIstek } = await import('../gundem-sitesi/src/video.js');
+  const kv = new Map([['7.jpg', new Uint8Array([0xff, 0xd8, 0xff]).buffer]]);
+  const env = { VIDEO: { get: async (k) => kv.get(k) ?? null } };
+  const r = await videoIstek(new Request('https://x/video/7.jpg'), env, '/video/7.jpg');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/jpeg');
+  assert.equal((await videoIstek(new Request('https://x/video/7.mp4'), env, '/video/7.mp4')).status, 404);
+  const s = await videoIstek(new Request('https://x/api/video/sira?tur=foto', { method: 'POST' }), env, '/api/video/sira');
+  assert.equal(s.status, 401);
+});

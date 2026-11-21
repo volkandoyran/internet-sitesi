@@ -11,6 +11,10 @@ Günde 4 kez (Türkiye saatiyle 08:20, 12:20, 16:20, 20:20) GitHub Actions (`.gi
 - 24 saatte en fazla `VIDEO_GUNLUK` (varsayılan 4) video, her haberden en fazla bir video.
 - Acil durdurma: Worker'da `OTOMATIK_PAYLASIM` = `0` (Telegram ile birlikte videolar da durur).
 
+## Instagram fotoğraf gönderileri
+
+Videoların yanında günde 2 kez (10:50 ve 18:50) Instagram'a 1080x1350 haber kartı (görsel) atılır: başlık, kısa metin, kaynak adı ve sağ üstte logo. Görsel ve video aynı haberi tekrar etmez. Sayıyı `GORSEL_GUNLUK` (Worker değişkeni, varsayılan 2) belirler. Instagram bağlı değilken görseller de `/video/liste` sayfasında durur. Elle denemek için Actions > Gündem kısa videoları > Run workflow > `mod` = `foto`.
+
 ## Kurulum
 
 Siteye bağlanmak için ayar gerekmez: iş akışı kimliğini GitHub'ın imzalı jetonuyla (OIDC) kanıtlar ve site yalnızca bu deponun `main` dalındaki `gundem-video.yml` iş akışını kabul eder. (İsteğe bağlı yedek: `VIDEO_ANAHTAR` gizli anahtarı hem Worker'da hem GitHub'da aynıysa o da kabul edilir.)
