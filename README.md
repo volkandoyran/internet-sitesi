@@ -15,12 +15,12 @@ Tamamen ücretsiz katmanlarda çalışır: Cloudflare Workers (site + API, stati
 
 Site, Cloudflare'in GitHub bağlantısıyla (Workers Builds) yayınlanır: `main` dalına her gönderimde Cloudflare siteyi kendisi derleyip yayınlar. İlk yayında D1 veritabanı otomatik oluşturulur, tablolar ve 20 satıcı ilk ziyarette otomatik kurulur.
 
-1. **Cloudflare'de admin şifresi:** Cloudflare paneli → *Workers & Pages → internet-sitesi → Settings → Variables and Secrets → Add*. Tür **Secret**, ad `ADMIN_PASSWORD`, değer olarak uzun ve tahmin edilemez bir şifre girin.
+1. **Cloudflare'de admin şifresi:** Cloudflare paneli → *Workers & Pages → ucfiyat → Settings → Variables and Secrets → Add*. Tür **Secret**, ad `ADMIN_PASSWORD`, değer olarak uzun ve tahmin edilemez bir şifre girin.
 2. **GitHub'da fiyat çekici ayarları:** bu depoda *Settings → Secrets and variables → Actions*:
    - *Secrets* sekmesi → `ADMIN_PASSWORD` = 1. adımdaki şifrenin aynısı
-   - *Variables* sekmesi → `SITE_URL` = sitenin adresi (ör. `https://internet-sitesi.<hesabınız>.workers.dev`, Cloudflare panelinde Worker sayfasının üstünde yazar)
+   - *Variables* sekmesi → `SITE_URL` = sitenin adresi (ör. `https://ucfiyat.<hesabınız>.workers.dev`, Cloudflare panelinde Worker sayfasının üstünde yazar)
 
-Worker adı `wrangler.jsonc` içindeki `name` ile Cloudflare panelindeki Worker adı aynı olmalıdır (`internet-sitesi`). Kendi alan adınızı *Settings → Domains & Routes* bölümünden bağlayabilirsiniz; o zaman `SITE_URL`'yi de güncelleyin.
+Worker adı `wrangler.jsonc` içindeki `name` ile Cloudflare panelindeki Worker adı aynı olmalıdır (`ucfiyat`). Kendi alan adınızı *Settings → Domains & Routes* bölümünden bağlayabilirsiniz; o zaman `SITE_URL`'yi de güncelleyin.
 
 ## Günlük kullanım
 
