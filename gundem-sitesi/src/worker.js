@@ -10,7 +10,7 @@ import { gorselBilgi, gorselleriDoldur } from './gorsel.js';
 export const GORSEL_CRON = '5,15,25,35,45,55 * * * *';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
 import { haberler, oneCikanlar, haber, sonHaberler } from './veri.js';
-import { kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
+import { haberSemasi, kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
 
 const sayfaNo = (url) => Math.max(1, Math.min(200, parseInt(url.searchParams.get('sayfa') || '1', 10) || 1));
 
@@ -109,7 +109,7 @@ export default {
       const g = await gorselBilgi(env, h.id);
       const foto = g && (g.tur === 'wiki' || g.tur === 'ai');
       return kabuk(env, { baslik: h.baslik, aciklama: h.metin, govde: detayGovde(h, foto ? g.atif : null), kanonik: `${kok}/haber/${h.id}`,
-        gorsel: foto ? `${kok}/gorsel/${h.id}.jpg` : null });
+        gorsel: foto ? `${kok}/gorsel/${h.id}.jpg` : null, makale: haberSemasi(env, kok, h, foto) });
     }
     if (yol === '/panel') return listeSayfasi(env, url);
     if (yol === '/panel/kaynaklar') return kaynakSayfasi(env);
@@ -117,10 +117,14 @@ export default {
     if (yol === '/rss.xml') {
       return new Response(rss(env, kok, await sonHaberler(env, 50)), { headers: { 'content-type': 'application/rss+xml; charset=utf-8', 'cache-control': 'public, max-age=300' } });
     }
+    // Google Search Console HTML dosyasıyla doğrulama: GOOGLE_DOGRULAMA_DOSYA = "google1234abcd.html"
+    if (env.GOOGLE_DOGRULAMA_DOSYA && yol === `/${env.GOOGLE_DOGRULAMA_DOSYA}`) {
+      return new Response(`google-site-verification: ${env.GOOGLE_DOGRULAMA_DOSYA}`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
     if (yol === '/robots.txt') return new Response(`User-agent: *\nAllow: /\nDisallow: /panel\nDisallow: /api/\nSitemap: ${kok}/sitemap.xml\n`, { headers: { 'content-type': 'text/plain' } });
     if (yol === '/sitemap.xml') {
       const l = await sonHaberler(env, 1000);
-      const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${kok}/</loc></url>`
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${kok}/</loc></url><url><loc>${kok}/cok-konusulan</loc></url><url><loc>${kok}/hakkinda</loc></url>`
         + l.map((h) => `<url><loc>${kok}/haber/${h.id}</loc><lastmod>${kac(h.zaman)}</lastmod></url>`).join('') + '</urlset>';
       return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=600' } });
     }

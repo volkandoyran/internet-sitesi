@@ -205,3 +205,14 @@ test('görsel çalışması: wiki, yapay zekâ, bekle ve şehit ayrımı; günl�
     assert.equal(r.hatalar.length, 1);
   } finally { globalThis.fetch = eski; }
 });
+
+test('SEO: Search Console etiketi, Open Graph ve NewsArticle', async () => {
+  const { kabuk: kb, haberSemasi } = await import('../gundem-sitesi/src/sayfa.js');
+  const h = haberiCoz({ id: 5, baslik: 'Başlık </script>', metin: 'Metin', kaynaklar: JSON.stringify([{ ad: 'TRT Haber', url: 'https://trt/1' }]), kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  const html = await kb({ GOOGLE_DOGRULAMA: 'abc123' }, { baslik: h.baslik, govde: '', kanonik: 'https://s/haber/5', makale: haberSemasi({}, 'https://s', h, false) }).text();
+  assert.match(html, /<meta name="google-site-verification" content="abc123">/);
+  assert.match(html, /og:type" content="article"/);
+  assert.match(html, /"@type":"NewsArticle"/);
+  assert.doesNotMatch(html, /Başlık <\/script>/);
+  assert.match(html, /"name":"TRT Haber"/);
+});

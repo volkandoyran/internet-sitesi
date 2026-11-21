@@ -36,3 +36,14 @@ curl -X POST -H "x-admin-sifre: <şifre>" https://gundem-sitesi.<hesabınız>.wo
 ## Yayın
 
 `npx wrangler deploy -c gundem-sitesi/wrangler.jsonc`. GitHub'dan otomatik yayın için Cloudflare panelinde Worker'ı bu depoya bağlayıp *Root directory* olarak `gundem-sitesi` seçin. Yerelde denemek: `npx wrangler dev -c gundem-sitesi/wrangler.jsonc`.
+
+## Google'da çıkmak (Search Console)
+
+Site Google için hazır: `/sitemap.xml` (son 1000 haber), `/robots.txt`, her sayfada açıklama ve Open Graph etiketleri, haber sayfalarında `NewsArticle` yapısal verisi.
+
+Kayıt (bir kez, ücretsiz):
+
+1. https://search.google.com/search-console → *Mülk ekle* → **URL öneki** → `https://gundem-sitesi.vitrin-web.workers.dev/`
+2. Doğrulama yöntemi olarak **HTML etiketi**ni seçin; `content="..."` içindeki kodu kopyalayın.
+3. Cloudflare → *Workers & Pages → gundem-sitesi → Settings → Variables and Secrets* → `GOOGLE_DOGRULAMA` adlı düz metin değişkeni olarak yapıştırın (ya da HTML dosyası yöntemi için dosya adını `GOOGLE_DOGRULAMA_DOSYA` olarak, ör. `google1234abcd.html`). Kaydedince site etiketi kendisi ekler.
+4. Search Console'da *Doğrula*'ya basın, sonra *Site haritaları* → `sitemap.xml` gönderin.
