@@ -66,3 +66,36 @@ export function extractPrice(html, fallbackCurrency) {
   if (ip && parseNumber(ip[1])) return { price: parseNumber(ip[1]), currency: fallbackCurrency, in_stock: true };
   return null;
 }
+
+const decodeEntities = (s) => String(s || '')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).trim();
+
+function jsonLdProduct(html) {
+  for (const [, txt] of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    let data;
+    try { data = JSON.parse(txt.trim().replace(/[\u0000-\u001f]+/g, ' ')); } catch { continue; }
+    for (const n of walk(data)) if (isType(n, 'product')) return n;
+  }
+  return null;
+}
+
+// Ürün sayfasından katalog için gereken her şey: ad, marka, parça kodu, görsel, fiyat
+export function extractProduct(html, fallbackCurrency) {
+  const ld = jsonLdProduct(html) || {};
+  const first = (v) => (Array.isArray(v) ? v[0] : v);
+  const name = decodeEntities(ld.name || meta(html, 'og:title') || (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1]?.replace(/<[^>]+>/g, '') || (html.match(/<title>([^<]*)/i) || [])[1]);
+  const brand = decodeEntities(typeof ld.brand === 'string' ? ld.brand : ld.brand?.name || meta(html, 'product:brand') || '');
+  const mpn = ld.mpn || ld.model?.toString?.().match(/^[A-Z0-9-]{6,}$/)?.[0] || null;
+  const img = first(ld.image);
+  const image = (typeof img === 'string' ? img : img?.url) || meta(html, 'og:image') || null;
+  let found = extractPrice(html, fallbackCurrency);
+  if (!found) {
+    // <span itemprop="price">309.90</span> ya da gizli fiyat alanı
+    const m = html.match(/itemprop=["']price["'][^>]*>\s*([\d.,]+)\s*</i) || html.match(/id=["']price_current["'][^>]*value=["']([\d.,]+)["']/i);
+    const price = m && parseNumber(m[1]);
+    if (price) found = { price, currency: meta(html, 'priceCurrency') || fallbackCurrency, in_stock: true };
+  }
+  if (!name || !found) return null;
+  return { name: name.slice(0, 300), brand: brand || null, mpn, image, ...found };
+}
