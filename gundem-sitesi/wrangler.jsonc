@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
-  "name": "gundem-botu",
+  // Otomasyonun merkezi: gündem botu (zamanlanmış toplama + otomatik paylaşım) ve herkese açık haber sitesi.
+  "name": "gundem-sitesi",
   "main": "src/worker.js",
   "compatibility_date": "2026-11-21",
   // Yarım saatte bir toplar (ücretsiz planda Workers AI kotasına sığacak sıklık)
@@ -12,7 +13,9 @@
   "ai": { "binding": "AI" },
   "vars": {
     // "0" yapılırsa platform bağlı olsa bile paylaşım durur
-    "OTOMATIK_PAYLASIM": "1"
+    "OTOMATIK_PAYLASIM": "1",
+    "SITE_ADI": "Gündem Özeti",
+    "SITE_ACIKLAMA": "Türkiye gündemindeki haberlerin kısa özetleri, her biri kaynağına bağlantılı."
   },
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "observability": { "enabled": true }

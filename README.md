@@ -73,5 +73,5 @@ npm test
 | `scraper/katalog.mjs` | Otomatik katalog tarayıcısı (site haritası → ürün sayfası → JSON-LD) |
 | `scraper/stores.mjs` | Otomatik taranan mağazalar ve bağlantı filtreleri |
 | `scraper/scrape.mjs` | Elle eklenen bağlantıların fiyat çekicisi |
-| `haber-botu/` | Ayrı Worker: Türkçe gündem haberlerini toplayan ve sosyal medya metni yazan bot (bkz. `haber-botu/README.md`) |
+| `gundem-sitesi/` | Ayrı site ve Worker: gündem haber sitesi ve sosyal medya otomasyonu (bkz. `gundem-sitesi/README.md`) |
 | `schema.sql` | Veritabanı şeması ve 20 başlangıç satıcısı (Worker ilk istekte kendisi çalıştırır) |

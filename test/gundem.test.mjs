@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rssAyristir, duzMetin, xmlCoz } from '../haber-botu/src/rss.js';
-import { imza, benzerlik, eslesen, urlSade, ESIK } from '../haber-botu/src/ayikla.js';
-import { sablonMetin, temizle, paylasimMetni, GOVDE_SINIR } from '../haber-botu/src/metin.js';
+import { rssAyristir, duzMetin, xmlCoz } from '../gundem-sitesi/src/rss.js';
+import { imza, benzerlik, eslesen, urlSade, ESIK } from '../gundem-sitesi/src/ayikla.js';
+import { sablonMetin, temizle, paylasimMetni, GOVDE_SINIR } from '../gundem-sitesi/src/metin.js';
 
 test('RSS 2.0: CDATA, kaçışlı HTML ve tarih', () => {
   const xml = `<rss><channel><title>Kanal</title><item><title><![CDATA[İstanbul'da sağanak &amp; fırtına]]></title>
@@ -62,4 +62,25 @@ test('paylaşım metni kaynağı her zaman içerir', () => {
   const m = paylasimMetni({ metin: 'Gövde', kaynaklar: [{ ad: 'TRT Haber', url: 'https://trt/1' }, { ad: 'NTV', url: 'https://ntv/1' }] });
   assert.equal(m, 'Gövde\n\nKaynak: TRT Haber (+1 kaynak)\nhttps://trt/1');
   assert.ok(duzMetin('<b>a</b>&nbsp;b') === 'a b');
+});
+
+// --- Herkese açık site ---
+import { metniAyir, goreli, haberKarti, detayGovde } from '../gundem-sitesi/src/sayfa.js';
+import { haberiCoz } from '../gundem-sitesi/src/veri.js';
+
+test('site: hashtag ayırma ve kaçış', () => {
+  assert.deepEqual(metniAyir('Meclis yeni yasayı kabul etti. #meclis #yasa'), { govde: 'Meclis yeni yasayı kabul etti.', etiketler: ['#meclis', '#yasa'] });
+  const h = haberiCoz({ id: 7, baslik: '<b>Son dakika</b>', metin: 'Özet', kaynaklar: JSON.stringify([{ ad: 'A', url: 'https://a.com/x' }, { ad: 'Kötü', url: 'javascript:alert(1)' }]), kaynak_sayisi: 2, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  assert.equal(h.kaynaklar.length, 1);
+  const html = haberKarti(h, Date.parse('2026-11-21T10:30:00Z'));
+  assert.match(html, /&lt;b&gt;Son dakika/);
+  assert.match(html, /30 dk önce/);
+  assert.match(html, /2 kaynakta/);
+  assert.doesNotMatch(detayGovde(h), /javascript:/);
+});
+
+test('site: göreli zaman', () => {
+  const s = Date.parse('2026-11-21T12:00:00Z');
+  assert.equal(goreli('2026-11-21T11:59:50Z', s), 'az önce');
+  assert.equal(goreli('2026-11-21T09:00:00Z', s), '3 sa önce');
 });

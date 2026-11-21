@@ -1,4 +1,4 @@
-// Çıktı listesi: toplanan haberler ve paylaşıma hazır metinler (sunucuda üretilen tek HTML sayfa)
+// Yönetim paneli (/panel): toplanan haberler ve paylaşıma hazır metinler (sunucuda üretilen tek HTML sayfa)
 import { paylasimMetni } from './metin.js';
 import { KAYNAKLAR } from './kaynaklar.js';
 import { PLATFORMLAR, aktifPlatformlar } from './paylas.js';
@@ -29,8 +29,8 @@ td,th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--cizgi);vert
 function kabuk(baslik, secili, govde) {
   return new Response(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>${kac(baslik)}</title><style>${STIL}</style></head><body><main>
-<header><h1>Gündem botu</h1><p>Türkçe haber kaynaklarından toplanan, tekrarları ayıklanmış gündem ve paylaşıma hazır kısa metinler.</p></header>
-<nav><a href="/" class="${secili === 'liste' ? 'on' : ''}">Haberler</a><a href="/?cok=1" class="${secili === 'cok' ? 'on' : ''}">Birden çok kaynakta</a><a href="/kaynaklar" class="${secili === 'kaynak' ? 'on' : ''}">Kaynaklar</a></nav>
+<header><h1>Gündem paneli</h1><p>Türkçe haber kaynaklarından toplanan, tekrarları ayıklanmış gündem ve paylaşıma hazır kısa metinler.</p></header>
+<nav><a href="/">← Siteye dön</a><a href="/panel" class="${secili === 'liste' ? 'on' : ''}">Haberler</a><a href="/panel?cok=1" class="${secili === 'cok' ? 'on' : ''}">Birden çok kaynakta</a><a href="/panel/kaynaklar" class="${secili === 'kaynak' ? 'on' : ''}">Kaynaklar</a></nav>
 ${govde}</main>
 <script>document.addEventListener('click',e=>{const b=e.target.closest('button[data-kopya]');if(!b)return;
 navigator.clipboard.writeText(document.getElementById(b.dataset.kopya).innerText).then(()=>{b.textContent='Kopyalandı';setTimeout(()=>b.textContent='Kopyala',1500)})})</script>
@@ -58,7 +58,7 @@ ${h.kaynak_sayisi > 1 ? `<span class="rozet cok">${h.kaynak_sayisi} kaynak</span
 <div class="alt"><ul>${h.kaynaklar.map((k) => `<li><a href="${kac(k.url)}" rel="noopener" target="_blank">${kac(k.ad)}</a>: ${kac(k.baslik)}</li>`).join('')}</ul>
 <button data-kopya="m${h.id}">Kopyala</button></div></article>`;
   }).join('');
-  return kabuk('Gündem botu', cok ? 'cok' : 'liste', `<div class="bant">${bant}</div>${kartlar || '<p class="bos">Henüz haber yok. İlk toplama birkaç dakika içinde çalışır.</p>'}`);
+  return kabuk('Gündem paneli', cok ? 'cok' : 'liste', `<div class="bant">${bant}</div>${kartlar || '<p class="bos">Henüz haber yok. İlk toplama birkaç dakika içinde çalışır.</p>'}`);
 }
 
 export async function kaynakSayfasi(env) {
@@ -67,5 +67,5 @@ export async function kaynakSayfasi(env) {
     const s = d[k.id] || {};
     return `<tr><td><a href="${kac(k.url)}">${kac(k.ad)}</a></td><td>${saat(s.son_basari)}</td><td>${s.haber_sayisi ?? '—'}</td><td class="hata">${kac(s.hata || '')}</td></tr>`;
   }).join('');
-  return kabuk('Kaynaklar · Gündem botu', 'kaynak', `<table><thead><tr><th>Kaynak</th><th>Son başarılı çekim</th><th>Akıştaki haber</th><th>Hata</th></tr></thead><tbody>${satirlar}</tbody></table>`);
+  return kabuk('Kaynaklar · Gündem paneli', 'kaynak', `<table><thead><tr><th>Kaynak</th><th>Son başarılı çekim</th><th>Akıştaki haber</th><th>Hata</th></tr></thead><tbody>${satirlar}</tbody></table>`);
 }
