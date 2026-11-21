@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ucfiyat",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-21",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    // Yalnızca bu yollar Worker'dan geçer; CSS/JS gibi dosyalar doğrudan (ücretsiz ve sınırsız) sunulur
+    "run_worker_first": ["/", "/index.html", "/api/*", "/ads.txt"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ucfiyat-db",
+      // Yayınlama iş akışı bu değeri otomatik doldurur
+      "database_id": "BURAYA_D1_KIMLIGI"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  }
+}

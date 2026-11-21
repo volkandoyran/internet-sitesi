@@ -8,20 +8,21 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 - `/admin` adresinde yönetim paneli: ürün, satıcı bağlantısı, elle fiyat, satıcı açma/kapama, reklam kodları
 - Hazır reklam alanları (üst, liste içi, alt, `<head>` kodu ve `ads.txt`)
 
-Tamamen ücretsiz katmanlarda çalışır: Cloudflare Pages (site + API), Cloudflare D1 (veritabanı), GitHub Actions (yayınlama ve günlük fiyat çekme).
+Tamamen ücretsiz katmanlarda çalışır: Cloudflare Workers (site + API, statik dosyalar dahil), Cloudflare D1 (veritabanı), GitHub Actions (yayınlama ve günlük fiyat çekme).
 
 ## Kurulum (bir kez)
 
 1. **Cloudflare hesap kimliği:** [dash.cloudflare.com](https://dash.cloudflare.com) → sağ alttaki *Account ID* değerini kopyalayın.
 2. **Cloudflare API anahtarı:** *My Profile → API Tokens → Create Token → Create Custom Token*. İzinler:
-   - Account → **Cloudflare Pages** → Edit
+   - Account → **Workers Scripts** → Edit
    - Account → **D1** → Edit
+   - Account → **Account Settings** → Read
 3. **GitHub gizli anahtarları:** bu depoda *Settings → Secrets and variables → Actions → New repository secret*:
    - `CLOUDFLARE_ACCOUNT_ID` = 1. adımdaki kimlik
    - `CLOUDFLARE_API_TOKEN` = 2. adımdaki anahtar
    - `ADMIN_PASSWORD` = yönetim paneli şifresi (uzun ve tahmin edilemez olsun)
-4. *Actions → Siteyi yayınla → Run workflow*. İş bitince site `https://ucfiyat.pages.dev` adresinde açılır. Veritabanı ve Pages projesi ilk çalıştırmada otomatik oluşturulur.
-5. Adres farklı çıkarsa (isim alınmışsa Cloudflare sonuna ek koyar) *Settings → Secrets and variables → Actions → Variables* altında `SITE_URL` değişkenine gerçek adresi yazın. Proje adını değiştirmek isterseniz `PROJECT_NAME` değişkenini kullanın.
+4. *Actions → Siteyi yayınla → Run workflow* (ya da `main`'e her gönderimde kendiliğinden çalışır). Veritabanı ilk çalıştırmada otomatik oluşturulur. Site `https://ucfiyat.<hesap-alt-alanınız>.workers.dev` adresinde açılır; tam adres iş akışı kaydının sonunda yazar.
+5. İsteğe bağlı: kendi alan adınızı Cloudflare panelinde *Workers → ucfiyat → Settings → Domains* bölümünden bağlayabilirsiniz. O zaman *Settings → Secrets and variables → Actions → Variables* altında `SITE_URL` değişkenine yeni adresi yazın. Worker adını değiştirmek için `PROJECT_NAME` değişkenini kullanın.
 
 ## Günlük kullanım
 
@@ -44,14 +45,14 @@ Boş bırakılan alanlar sitede görünmez.
 - **Bot koruması:** MediaMarkt, Public, Kotsovolos gibi büyük siteler otomatik istekleri engelleyebilir. Hangi satıcının çalıştığını admin panelindeki hata sütunu ve Actions kayıtları gösterir.
 - **Güncellik:** fiyatlar günde bir kez çekilir. 14 günden uzun süredir güncellenemeyen fiyat sitede gösterilmez (elle girilenler hariç).
 - **Kullanım koşulları:** bazı satıcıların koşulları otomatik veri çekmeyi yasaklayabilir. Site büyürse satıcıların ortaklık (affiliate) programları ve ürün veri akışları daha güvenli bir kaynaktır.
-- **Ücretsiz katman sınırları:** Cloudflare Pages/Workers günde 100.000 istek, D1 günde 5 milyon okuma ve 5 GB depolama. GitHub Actions herkese açık depolarda ücretsizdir.
+- **Ücretsiz katman sınırları:** Workers günde 100.000 istek (yalnızca ana sayfa ve API sayılır; CSS/JS dosyaları sınırsız ve ücretsiz), D1 günde 5 milyon satır okuma ve 5 GB depolama. GitHub Actions herkese açık depolarda ücretsizdir.
 
 ## Yerelde çalıştırma
 
 ```bash
 npm install
 echo "ADMIN_PASSWORD=yerel-sifre" > .dev.vars
-npm run dev      # http://localhost:8788
+npm run dev      # http://localhost:8787
 npm test
 ```
 
@@ -60,8 +61,9 @@ npm test
 | Yol | İçerik |
 | --- | --- |
 | `public/` | Site (HTML/CSS/JS) ve `public/admin/` yönetim paneli |
-| `functions/api/[[path]].js` | API: arama, ürün ayrıntısı, admin işlemleri |
-| `functions/_middleware.js` | Reklam `<head>` kodunu sayfalara ekler |
+| `src/worker.js` | Giriş noktası: API yönlendirmesi, `ads.txt`, reklam `<head>` kodu |
+| `src/api.js` | API: arama, ürün ayrıntısı, admin işlemleri |
+| `wrangler.jsonc` | Cloudflare Worker ayarları |
 | `lib/specs.js` | İşlemci/ekran kartı puanları, benzer ürün hesabı |
 | `scraper/` | Günlük fiyat çekici (JSON-LD ve meta etiketlerinden fiyat okur) |
 | `schema.sql` | Veritabanı şeması ve 15 başlangıç satıcısı |

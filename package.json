@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler d1 execute ucfiyat-db --local --file=schema.sql && wrangler pages dev",
+    "dev": "wrangler d1 execute ucfiyat-db --local --file=schema.sql && wrangler dev",
     "scrape": "node scraper/scrape.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "check": "wrangler deploy --dry-run"
   },
   "devDependencies": {
     "wrangler": "4.166.0"

@@ -1,7 +1,7 @@
 // Günlük fiyat çekici. GitHub Actions'ta çalışır.
 // 1) Siteden takip edilen ürün bağlantılarını alır, 2) her sayfadan fiyatı okur,
 // 3) TRY kurunu alır, 4) sonuçları siteye geri yazar.
-// Gerekli ortam değişkenleri: SITE_URL (ör. https://ucfiyat.pages.dev), ADMIN_PASSWORD
+// Gerekli ortam değişkenleri: SITE_URL (ör. https://ucfiyat.<hesap>.workers.dev), ADMIN_PASSWORD
 import { extractPrice } from './extract.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');

@@ -9,12 +9,22 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SITE_URL: ${{ vars.SITE_URL }}
+      PROJECT: ${{ vars.PROJECT_NAME || 'ucfiyat' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Site adresini bul
+        if: env.SITE_URL == ''
+        run: |
+          SUB=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            | node -e "console.log(JSON.parse(require('fs').readFileSync(0)).result.subdomain)")
+          echo "SITE_URL=https://$PROJECT.$SUB.workers.dev" >> "$GITHUB_ENV"
       - name: Fiyatları çek
-        env:
-          SITE_URL: ${{ vars.SITE_URL || format('https://{0}.pages.dev', vars.PROJECT_NAME || 'ucfiyat') }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: node scraper/scrape.mjs

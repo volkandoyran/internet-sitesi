@@ -37,17 +37,15 @@ jobs:
       - name: D1 veritabanını hazırla (yoksa oluşturur)
         if: steps.check.outputs.ready == 'true'
         run: |
-          ID=$(npx wrangler d1 list --json | node -e "const l=JSON.parse(require('fs').readFileSync(0));const d=l.find(x=>x.name==='ucfiyat-db');console.log(d?d.uuid:'')")
-          if [ -z "$ID" ]; then
-            npx wrangler d1 create ucfiyat-db
-            ID=$(npx wrangler d1 list --json | node -e "const l=JSON.parse(require('fs').readFileSync(0));console.log(l.find(x=>x.name==='ucfiyat-db').uuid)")
-          fi
-          sed -i "s/BURAYA_D1_KIMLIGI/$ID/" wrangler.toml
-          sed -i "s/^name = .*/name = \"$PROJECT\"/" wrangler.toml
+          find_id() { npx wrangler d1 list --json | node -e "const l=JSON.parse(require('fs').readFileSync(0));const d=l.find(x=>x.name==='ucfiyat-db');console.log(d?d.uuid:'')"; }
+          ID=$(find_id)
+          if [ -z "$ID" ]; then npx wrangler d1 create ucfiyat-db --location eeur --update-config=false; ID=$(find_id); fi
+          sed -i "s/BURAYA_D1_KIMLIGI/$ID/" wrangler.jsonc
+          sed -i "s/\"name\": \"ucfiyat\"/\"name\": \"$PROJECT\"/" wrangler.jsonc
           npx wrangler d1 execute ucfiyat-db --remote --file=schema.sql
-      - name: Pages projesini hazırla ve yayınla
+      - name: Yayınla
         if: steps.check.outputs.ready == 'true'
         run: |
-          npx wrangler pages project create "$PROJECT" --production-branch main || true
-          printf '%s' "$ADMIN_PASSWORD" | npx wrangler pages secret put ADMIN_PASSWORD --project-name "$PROJECT"
-          npx wrangler pages deploy --project-name "$PROJECT" --branch main --commit-dirty=true
+          node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP + '/secrets.json', JSON.stringify({ ADMIN_PASSWORD: process.env.ADMIN_PASSWORD }))"
+          npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
+          rm -f "$RUNNER_TEMP/secrets.json"

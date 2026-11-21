@@ -1,5 +1,5 @@
-// Tek dosyalık API (Cloudflare Pages Functions). env.DB = D1, env.ADMIN_PASSWORD = gizli anahtar.
-import { cpuScore, gpuScore, parseQuery, distance } from '../../lib/specs.js';
+// API. env.DB = D1, env.ADMIN_PASSWORD = gizli anahtar.
+import { cpuScore, gpuScore, parseQuery, distance } from '../lib/specs.js';
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -12,8 +12,7 @@ const PRODUCT_FIELDS = ['name', 'brand', 'type', 'category', 'cpu', 'cpu_score',
   'ram_gb', 'storage_gb', 'screen_in', 'image'];
 const AD_KEYS = ['ad_head', 'ad_top', 'ad_inline', 'ad_bottom', 'ads_txt'];
 
-export async function onRequest({ request, env, params }) {
-  const parts = params.path || [];
+export async function handleApi(request, env, parts) {
   const url = new URL(request.url);
   const method = request.method;
   try {
@@ -32,14 +31,17 @@ export async function onRequest({ request, env, params }) {
   }
 }
 
+// Şifre karşılaştırması: iki değer de SHA-256 ile sabit boyuta getirilip zamanlamadan bağımsız karşılaştırılır
 async function isAdmin(request, env) {
   const pw = env.ADMIN_PASSWORD;
   if (!pw) return false;
   const got = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (got.length !== pw.length) return false;
-  let diff = 0;
-  for (let i = 0; i < pw.length; i++) diff |= pw.charCodeAt(i) ^ got.charCodeAt(i);
-  return diff === 0;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(got)),
+    crypto.subtle.digest('SHA-256', enc.encode(pw)),
+  ]);
+  return crypto.subtle.timingSafeEqual(a, b);
 }
 
 const retailers = async (env) =>
