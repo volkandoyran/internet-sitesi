@@ -11,6 +11,13 @@ Kurallar:
 - Bağlantı, kaynak adı ve emoji yazma. Sonuna en fazla 2 ilgili hashtag ekleyebilirsin.
 - Yalnızca paylaşım metnini yaz, açıklama yapma.`;
 
+// Şehit haberleri: yaslı, saygılı dil ve koyu kapak (Volkan'ın isteği)
+export const sehitMi = (h) => /şehit|sehit|şehadet/i.test(`${h?.baslik || ''} ${h?.ozet || ''} ${h?.metin || ''}`);
+export const BASSAGLIGI = 'Şehidimize Allah\'tan rahmet, ailesine ve milletimize başsağlığı diliyoruz.';
+const YAS_EK = `
+Bu bir şehit haberi. Metni yaslı, ağırbaşlı ve üzüntüyü belli eden bir dille yaz; acıyı ve saygıyı hissettir, sansasyon yapma.
+Metni şu cümleyle bitir: "${BASSAGLIGI}" Hashtag olarak yalnızca #şehit yaz.`;
+
 function kirp(s, n) {
   if (s.length <= n) return s;
   const k = s.slice(0, n - 1);
@@ -29,6 +36,10 @@ export function temizle(s) {
 }
 
 export function sablonMetin({ baslik, ozet }) {
+  if (sehitMi({ baslik, ozet })) {
+    const b = baslik.replace(/\s+/g, ' ').trim().replace(/[.!]*$/, '.');
+    return `Acı haber: ${kirp(b, GOVDE_SINIR - BASSAGLIGI.length - 12)} ${BASSAGLIGI}`;
+  }
   let m = baslik.replace(/\s+/g, ' ').trim();
   const cumle = (ozet || '').match(/^[\s\S]*?[.!?](\s|$)/)?.[0]?.trim() || '';
   if (cumle && !cumle.toLocaleLowerCase('tr-TR').startsWith(m.toLocaleLowerCase('tr-TR').slice(0, 30))) {
@@ -41,15 +52,20 @@ export function sablonMetin({ baslik, ozet }) {
 export async function aiMetin(env, { baslik, ozet }) {
   const r = await env.AI.run(MODEL, {
     messages: [
-      { role: 'system', content: SISTEM },
+      { role: 'system', content: SISTEM + (sehitMi({ baslik, ozet }) ? YAS_EK : '') },
       { role: 'user', content: `Başlık: ${baslik}\nÖzet: ${(ozet || '').slice(0, 500)}` },
     ],
-    max_tokens: 160,
+    max_tokens: 180,
     temperature: 0.4,
   });
   const ham = typeof r === 'string' ? r : r?.response ?? r?.choices?.[0]?.message?.content ?? '';
-  const t = temizle(ham);
+  let t = temizle(ham);
   if (t.length < 30) throw new Error('model boş ya da çok kısa yanıt verdi');
+  if (sehitMi({ baslik, ozet })) {
+    // Başsağlığı cümlesi kesilmesin: gövde kırpılır, cümle sona eklenir
+    t = t.replace(BASSAGLIGI, '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim();
+    return `${kirp(t, GOVDE_SINIR - 10)} ${BASSAGLIGI} #şehit`;
+  }
   return kirp(t, GOVDE_SINIR + 40);
 }
 

@@ -1,6 +1,8 @@
 // Sunucuda üretilen HTML. Kaynak haberlerin metni kopyalanmaz: yalnızca başlık, botun yazdığı
 // kısa özet ve haberin alındığı yerin adı gösterilir (bağlantı verilmez).
 
+import { sehitMi } from './metin.js';
+
 export const kac = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const TZ = 'Europe/Istanbul';
@@ -41,22 +43,22 @@ h2.bolum{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(
 .one a{display:block;text-decoration:none;background:var(--vurgu-ac);border-radius:12px;padding:12px 14px}
 .one a strong{display:block;font:700 16px/1.3 Georgia,serif;margin-bottom:6px}.one a span{font-size:12.5px;color:var(--soluk)}
 article.haber{background:var(--kart);border:1px solid var(--cizgi);border-radius:14px;padding:16px;margin-bottom:12px;display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start}
-.kapak img,.one img,.kapak-buyuk{display:block;width:100%;height:auto;aspect-ratio:1200/630;border-radius:10px;background:var(--cizgi)}
-.one img{margin-bottom:10px;border-radius:8px}.kapak-buyuk{margin:6px 0 16px;border-radius:14px}
+.kapak img,.one img,.kapak-buyuk{display:block;width:100%;height:auto;aspect-ratio:1200/630;object-fit:cover;border-radius:10px;background:var(--cizgi)}
+.one img{margin-bottom:10px;border-radius:8px}.kapak-buyuk{border-radius:14px;object-fit:cover}.kapak-fig{margin:6px 0 16px}.kapak-fig figcaption{font-size:12px;color:var(--soluk);margin-top:6px}
 @media (max-width:600px){article.haber{grid-template-columns:1fr;gap:12px}}
 article.haber h3{font:700 19px/1.3 Georgia,"Times New Roman",serif;margin:0 0 6px}article.haber h3 a{text-decoration:none}
 article.haber h3 a:hover{text-decoration:underline}
 .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--soluk);margin-bottom:8px}
 .rozet{color:var(--vurgu);border:1px solid currentColor;border-radius:999px;padding:0 8px;font-weight:700;font-size:12px}
 p.ozet{margin:0 0 8px}.etiket{font-size:13px;color:var(--soluk);margin-right:6px}
-.kaynak{font-size:13.5px;color:var(--soluk)}.kaynak b{color:var(--yazi)}.rozet.ceviri{color:var(--soluk)}
+.kaynak{font-size:13.5px;color:var(--soluk)}.kaynak b{color:var(--yazi)}.rozet.ceviri{color:var(--soluk)}.rozet.yas{color:var(--yazi);background:var(--cizgi);border-color:var(--yazi)}
 .sayfala{display:flex;justify-content:space-between;margin:20px 0}
 .bos{text-align:center;color:var(--soluk);padding:60px 0}
 .detay h1{font:800 clamp(24px,5vw,34px)/1.2 Georgia,"Times New Roman",serif;margin:18px 0 10px}
 .detay .ozet{font-size:18px}.detay ul{padding-left:20px}.detay li{margin:6px 0}
 footer{border-top:1px solid var(--cizgi);margin-top:30px;padding:18px 0 40px;font-size:13px;color:var(--soluk)}`;
 
-export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, durum = 200 }) {
+export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, gorsel, durum = 200 }) {
   const ad = env.SITE_ADI || 'Gündem Özeti';
   const tamBaslik = baslik ? `${baslik} · ${ad}` : `${ad} · Türkiye gündemi`;
   const acik = aciklama || env.SITE_ACIKLAMA || '';
@@ -64,7 +66,7 @@ export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, duru
   const sekme = (yol, ad2, k) => `<a href="${yol}" class="${secili === k ? 'on' : ''}">${ad2}</a>`;
   const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${kac(tamBaslik)}</title><meta name="description" content="${kac(acik)}">
-<meta property="og:title" content="${kac(baslik || ad)}"><meta property="og:description" content="${kac(acik)}"><meta property="og:type" content="website">
+<meta property="og:title" content="${kac(baslik || ad)}"><meta property="og:description" content="${kac(acik)}"><meta property="og:type" content="website">${gorsel ? `<meta property="og:image" content="${kac(gorsel)}"><meta name="twitter:card" content="summary_large_image">` : ''}
 ${kanonik ? `<link rel="canonical" href="${kac(kanonik)}">` : ''}
 <link rel="alternate" type="application/rss+xml" title="${kac(ad)}" href="/rss.xml">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c0261c'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='Georgia' font-weight='bold'%3EG%3C/text%3E%3C/svg%3E">
@@ -86,8 +88,8 @@ function kaynakSatiri(h) {
 
 export function haberKarti(h, simdi) {
   const { govde, etiketler } = metniAyir(h.metin);
-  return `<article class="haber"><a class="kapak" href="/haber/${h.id}" tabindex="-1" aria-hidden="true"><img src="/kapak/${h.id}.svg" alt="" loading="lazy" width="1200" height="630"></a><div class="icerik"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(goreli(h.zaman, simdi))}</time>
-${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
+  return `<article class="haber"><a class="kapak" href="/haber/${h.id}" tabindex="-1" aria-hidden="true"><img src="/gorsel/${h.id}" alt="" loading="lazy" width="1200" height="630"></a><div class="icerik"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(goreli(h.zaman, simdi))}</time>
+${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}${sehitMi(h) ? '<span class="rozet yas">Acı haber</span>' : ''}</div>
 <h3><a href="/haber/${h.id}">${kac(h.baslik)}</a></h3>
 ${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
@@ -102,7 +104,7 @@ export function liste(haberler, { bosMesaj = 'Henüz haber yok. Gündem botu her
 export function oneCikanBlok(haberler) {
   if (!haberler.length) return '';
   return `<h2 class="bolum">Son 24 saatin öne çıkanları</h2><div class="one">${haberler.map((h) =>
-    `<a href="/haber/${h.id}"><img src="/kapak/${h.id}.svg" alt="" loading="lazy" width="1200" height="630"><strong>${kac(h.baslik)}</strong><span>${h.kaynak_sayisi} kaynakta · ${kac(goreli(h.zaman))}</span></a>`).join('')}</div>
+    `<a href="/haber/${h.id}"><img src="/gorsel/${h.id}" alt="" loading="lazy" width="1200" height="630"><strong>${kac(h.baslik)}</strong><span>${h.kaynak_sayisi} kaynakta · ${kac(goreli(h.zaman))}</span></a>`).join('')}</div>
 <h2 class="bolum">Son haberler</h2>`;
 }
 
@@ -116,11 +118,11 @@ export function sayfalama(yol, sayfa, sonraki, ekParam = '') {
   return `<div class="sayfala">${sayfa > 1 ? `<a href="${link(sayfa - 1)}">← Daha yeni</a>` : '<span></span>'}${sonraki ? `<a href="${link(sayfa + 1)}">Daha eski →</a>` : ''}</div>`;
 }
 
-export function detayGovde(h) {
+export function detayGovde(h, atif = null) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<div class="detay"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(tamTarih(h.zaman))}</time>
-${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
-<h1>${kac(h.baslik)}</h1><img class="kapak-buyuk" src="/kapak/${h.id}.svg" alt="${kac(h.baslik)}" width="1200" height="630">${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
+${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}${sehitMi(h) ? '<span class="rozet yas">Acı haber</span>' : ''}</div>
+<h1>${kac(h.baslik)}</h1><figure class="kapak-fig"><img class="kapak-buyuk" src="/gorsel/${h.id}" alt="${kac(h.baslik)}" width="1200" height="630">${atif ? `<figcaption>${kac(atif)}</figcaption>` : ''}</figure>${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
 <h2 class="bolum">Kaynak</h2>
 <ul>${h.kaynaklar.map((k) => `<li>${kac(k.ad)}${k.dil ? ' (Türkçe çeviri)' : ''}</li>`).join('')}</ul>

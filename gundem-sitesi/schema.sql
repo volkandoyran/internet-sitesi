@@ -48,3 +48,13 @@ CREATE TABLE IF NOT EXISTS videolar (
   tur      TEXT NOT NULL DEFAULT 'video'  -- 'video' (Reels/Shorts) ya da 'foto' (Instagram görsel gönderisi)
 );
 -- Eski kurulumlar için bir kez: ALTER TABLE videolar ADD COLUMN tur TEXT NOT NULL DEFAULT 'video';
+
+-- Haber görselleri: 'wiki' (Wikimedia Commons serbest lisanslı fotoğraf, url = küçük resim adresi),
+-- 'ai' (yapay zekâ ile üretilmiş temsili görsel, GORSEL KV'de g/<id>.jpg), 'yok' (bulunamadı, SVG kapak kullanılır)
+CREATE TABLE IF NOT EXISTS gorseller (
+  haber_id INTEGER PRIMARY KEY,
+  tur      TEXT NOT NULL,
+  url      TEXT,
+  atif     TEXT,
+  zaman    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);

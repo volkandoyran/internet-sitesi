@@ -115,6 +115,57 @@ test('kapak: başlık satırlara bölünür, kaçış yapılır, kaynak adı yaz
 
 test('site: kartlarda ve haber sayfasında kapak var', () => {
   const h = haberiCoz({ id: 9, baslik: 'Başlık', metin: 'Metin', kaynaklar: '[]', kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
-  assert.match(haberKarti(h), /\/kapak\/9\.svg/);
-  assert.match(detayGovde(h), /\/kapak\/9\.svg/);
+  assert.match(haberKarti(h), /\/gorsel\/9"/);
+  assert.match(detayGovde(h), /\/gorsel\/9"/);
+});
+
+// --- Görsel ---
+import { adUyar, jsonAyikla, wikiFoto } from '../gundem-sitesi/src/gorsel.js';
+
+test('görsel: kişi adı eşleştirme ve JSON ayıklama', () => {
+  assert.ok(adUyar('Recep Tayyip Erdoğan', 'Recep Tayyip Erdoğan'));
+  assert.ok(adUyar('Volodimir Zelenskiy', 'Volodymyr Zelenskyy') === false);
+  assert.ok(adUyar('Emmanuel Macron', 'Emmanuel Macron'));
+  assert.equal(adUyar('Macron', 'Emmanuel Macron'), false);
+  assert.equal(adUyar('Ali Koç', 'Koç Holding'), false);
+  assert.deepEqual(jsonAyikla('Yanıt: {"kisi": "Ali Veli", "sahne": "x"} bitti'), { kisi: 'Ali Veli', sahne: 'x' });
+  assert.deepEqual(jsonAyikla('json yok'), {});
+});
+
+test('görsel: Wikipedia fotoğrafı yalnızca serbest lisans ve ad uyuşursa alınır', async () => {
+  const eski = globalThis.fetch;
+  const istekler = [];
+  globalThis.fetch = async (url) => {
+    istekler.push(String(url));
+    if (String(url).includes('wikipedia.org')) return new Response(JSON.stringify({ query: { pages: { 1: { title: 'Emmanuel Macron', pageimage: 'Macron.jpg' } } } }));
+    return new Response(JSON.stringify({ query: { pages: { '-1': { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/m.jpg', extmetadata: { LicenseShortName: { value: 'CC BY 4.0' }, Artist: { value: '<a href="x">Foto Grafçı</a>' } } }] } } } }));
+  };
+  try {
+    const f = await wikiFoto('Emmanuel Macron');
+    assert.equal(f.url, 'https://upload.wikimedia.org/m.jpg');
+    assert.match(f.atif, /Foto Grafçı \/ CC BY 4\.0, Wikimedia Commons/);
+    assert.match(istekler[0], /pilicense=free/);
+    assert.equal(await wikiFoto('Ali Veli'), null);
+  } finally { globalThis.fetch = eski; }
+});
+
+// --- Şehit haberleri ---
+import { sehitMi, BASSAGLIGI, aiMetin } from '../gundem-sitesi/src/metin.js';
+
+test('şehit haberi: yaslı şablon, başsağlığı, koyu kapak, rozet', async () => {
+  const h = { id: 4, baslik: 'Pençe-Kilit bölgesinde 2 asker şehit oldu', ozet: 'MSB açıkladı.' };
+  assert.ok(sehitMi(h));
+  assert.equal(sehitMi({ baslik: 'Merkez Bankası faizi sabit tuttu' }), false);
+  const s = sablonMetin(h);
+  assert.match(s, /^Acı haber: Pençe-Kilit/);
+  assert.ok(s.endsWith(BASSAGLIGI));
+  const env = { AI: { run: async (_m, b) => { assert.match(b.messages[0].content, /şehit haberi/); return { response: 'Kahreden haber geldi; iki kahraman askerimiz şehit oldu. ' + BASSAGLIGI + ' #acı #asker' }; } } };
+  const m = await aiMetin(env, h);
+  assert.ok(m.endsWith(`${BASSAGLIGI} #şehit`));
+  assert.equal(m.split(BASSAGLIGI).length, 2);
+  const svg = kapakSvg({ ...h, kaynaklar: [] });
+  assert.match(svg, /ACI HABER/);
+  assert.match(svg, /#0b0b0c/);
+  const k = haberiCoz({ id: 4, baslik: h.baslik, metin: s, kaynaklar: '[]', kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  assert.match(haberKarti(k), /Acı haber<\/span>/);
 });

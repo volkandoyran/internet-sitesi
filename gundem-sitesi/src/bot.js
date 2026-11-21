@@ -4,6 +4,7 @@ import { rssAyristir, xmlCoz } from './rss.js';
 import { imza, eslesen, urlSade } from './ayikla.js';
 import { aiMetin, aiCeviri, sablonMetin, paylasimMetni } from './metin.js';
 import { aktifPlatformlar } from './paylas.js';
+import { gorselleriDoldur } from './gorsel.js';
 
 const SAAT = 3600e3;
 const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
@@ -11,7 +12,7 @@ const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Nu
 export const ayarlar = (env) => ({
   yeniSaat: sayi(env.YENI_HABER_SAAT, 24),       // bundan eski haberler alınmaz
   eslesmeSaat: sayi(env.ESLESME_SAAT, 36),       // tekrar ararken bakılan süre
-  aiLimit: sayi(env.AI_LIMIT, 8),                // çalışma başına yapay zekâ metni (ücretsiz kota için)
+  aiLimit: sayi(env.AI_LIMIT, 5),                // çalışma başına yapay zekâ metni (ücretsiz kota: metin + görsel günde 10.000 nöronu aşmasın)
   yabanciLimit: sayi(env.YABANCI_LIMIT, 2),      // bunun kaçı yabancı haber çevirisine ayrılır
   yabanciSaat: sayi(env.YABANCI_SAAT, 6),        // bu sürede çevrilemeyen yabancı haber yayınlanmaz
   paylasimLimit: sayi(env.PAYLASIM_LIMIT, 2),    // çalışma başına platform başına paylaşım
@@ -135,6 +136,9 @@ export async function topla(env, simdi = Date.now()) {
   }
   for (let i = 0; i < metinYaz.length; i += 50) await env.DB.batch(metinYaz.slice(i, i + 50));
 
+  // 4b. Görseller (Wikimedia Commons serbest fotoğraf ya da yapay zekâ temsili görsel)
+  try { await gorselleriDoldur(env, rapor); } catch (e) { rapor.hatalar.push(`Görsel: ${e.message || e}`); }
+
   // 5. Otomatik paylaşım (yalnızca gizli ayarları girilmiş platformlar)
   for (const p of aktifPlatformlar(env)) {
     const sira = (await env.DB.prepare(`SELECT h.* FROM haberler h WHERE h.metin IS NOT NULL AND h.ilk_gorulme >= ?
@@ -153,6 +157,7 @@ export async function topla(env, simdi = Date.now()) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM paylasimlar WHERE haber_id IN (SELECT id FROM haberler WHERE ilk_gorulme < ?)').bind(sinir),
     env.DB.prepare('DELETE FROM haberler WHERE ilk_gorulme < ?').bind(sinir),
+    env.DB.prepare('DELETE FROM gorseller WHERE haber_id NOT IN (SELECT id FROM haberler)'),
     env.DB.prepare('DELETE FROM gorulen WHERE zaman < ?').bind(sinir),
   ]);
   return rapor;

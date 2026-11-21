@@ -5,6 +5,7 @@ import SCHEMA from '../schema.sql';
 import { topla } from './bot.js';
 import { videoIstek } from './video.js';
 import { kapakSvg } from './kapak.js';
+import { gorselBilgi } from './gorsel.js';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
 import { haberler, oneCikanlar, haber, sonHaberler } from './veri.js';
 import { kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
@@ -78,17 +79,30 @@ export default {
       return kabuk(env, { baslik: 'Çok konuşulanlar', secili: 'cok', aciklama: 'Birden çok haber kaynağında yer alan gündem başlıkları.',
         govde: liste(l, { bosMesaj: 'Henüz birden çok kaynakta geçen haber yok.' }) + sayfalama('/cok-konusulan', sayfa, sonraki) });
     }
-    const kp = yol.match(/^\/kapak\/(\d+)\.svg$/);
+    // /gorsel/<id>: fotoğraf varsa onu (Commons'a yönlendirme ya da KV'deki yapay zekâ görseli), yoksa SVG kapak
+    const kp = yol.match(/^\/(kapak|gorsel)\/(\d+)(?:\.svg|\.jpg)?$/);
     if (kp) {
-      const h = await haber(env, Number(kp[1]));
+      const id = Number(kp[2]);
+      if (kp[1] === 'gorsel') {
+        const g = await gorselBilgi(env, id);
+        if (g?.tur === 'wiki' && g.url) return Response.redirect(g.url, 302);
+        if (g?.tur === 'ai' && env.GORSEL) {
+          const v = await env.GORSEL.get(`g/${id}.jpg`, 'arrayBuffer');
+          if (v) return new Response(v, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=604800' } });
+        }
+      }
+      const h = await haber(env, id);
       if (!h) return new Response('Bulunamadı', { status: 404 });
-      return new Response(kapakSvg(h), { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
+      return new Response(kapakSvg(h), { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=1800' } });
     }
     const m = yol.match(/^\/haber\/(\d+)$/);
     if (m) {
       const h = await haber(env, Number(m[1]));
       if (!h) return kabuk(env, { baslik: 'Bulunamadı', govde: '<p class="bos">Bu haber bulunamadı.</p>', durum: 404 });
-      return kabuk(env, { baslik: h.baslik, aciklama: h.metin, govde: detayGovde(h), kanonik: `${kok}/haber/${h.id}` });
+      const g = await gorselBilgi(env, h.id);
+      const foto = g && (g.tur === 'wiki' || g.tur === 'ai');
+      return kabuk(env, { baslik: h.baslik, aciklama: h.metin, govde: detayGovde(h, foto ? g.atif : null), kanonik: `${kok}/haber/${h.id}`,
+        gorsel: foto ? `${kok}/gorsel/${h.id}.jpg` : null });
     }
     if (yol === '/panel') return listeSayfasi(env, url);
     if (yol === '/panel/kaynaklar') return kaynakSayfasi(env);
