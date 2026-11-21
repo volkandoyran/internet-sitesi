@@ -160,13 +160,25 @@ export async function matchedPage(env) {
     return { p, pc, cheapest: cs.find((c) => pc[c].price_eur === min), min, max, save: max - min, pct: max ? Math.round(((max - min) / max) * 100) : 0 };
   }).filter(Boolean).sort((a, b) => b.pct - a.pct || b.save - a.save);
 
-  const counts = {};
-  for (const r of rows) counts[BOLUM[r.p.type]] = (counts[BOLUM[r.p.type]] || 0) + 1;
-  const filters = [['', 'Hepsi', rows.length], ['bilgisayar', 'Bilgisayarlar'], ['parca', 'Parçalar'], ['telefon', 'Telefonlar'], ['tablet', 'Tabletler']]
-    .map(([k, l, n]) => [k, l, n ?? counts[k] ?? 0]).filter(([k, , n]) => !k || n)
-    .map(([k, l, n], i) => `<button type="button" data-filter="${k}" aria-pressed="${i === 0}">${l} <small>${n}</small></button>`).join('');
-  const items = rows.map(({ p, pc, cheapest, save, pct }) => `
-    <li class="item match" data-bolum="${BOLUM[p.type]}">
+  // Bölümler: bilgisayarlar, parçalar, ekipman (monitör), telefonlar, tabletler; her birinde alt türler
+  const GROUPS = [['bilgisayar', 'Bilgisayarlar'], ['parca', 'Parçalar'], ['ekipman', 'Ekipman'], ['telefon', 'Telefonlar'], ['tablet', 'Tabletler']];
+  const group = (p) => (isPc(p) ? 'bilgisayar' : p.type === 'part' ? (p.category === 'monitor' ? 'ekipman' : 'parca') : p.type === 'phone' ? 'telefon' : 'tablet');
+  const sub = (p) => (isPc(p) ? p.type : p.type === 'part' ? p.category || 'diger' : '');
+  const SUB = { laptop: 'Laptop', desktop: 'Masaüstü', ...CATEGORY, monitor: 'Monitör', diger: 'Diğer' };
+  const byGroup = Object.fromEntries(GROUPS.map(([k]) => [k, rows.filter((r) => group(r.p) === k)]));
+  const tabs = [['', 'Hepsi', rows.length], ...GROUPS.map(([k, l]) => [k, l, byGroup[k].length])]
+    .map(([k, l, n], i) => `<button type="button" data-filter="${k}" aria-pressed="${i === 0}"${n ? '' : ' disabled'}>${l} <small>${n}</small></button>`).join('');
+  // Alt tür düğmeleri (yalnızca seçili bölümde görünür)
+  const subs = GROUPS.map(([k]) => {
+    const c = {};
+    for (const r of byGroup[k]) { const t = sub(r.p); if (t) c[t] = (c[t] || 0) + 1; }
+    const list = Object.entries(c).sort((a, b) => b[1] - a[1]);
+    if (list.length < 2) return '';
+    return `<div class="subtabs" data-for="${k}" role="group" aria-label="Tür" hidden><button type="button" data-sub="" aria-pressed="true">Tümü <small>${byGroup[k].length}</small></button>${
+      list.map(([t, n]) => `<button type="button" data-sub="${t}" aria-pressed="false">${esc(SUB[t] || t)} <small>${n}</small></button>`).join('')}</div>`;
+  }).join('');
+  const card = ({ p, pc, cheapest, save, pct }) => `
+    <li class="item match" data-sub="${sub(p)}">
       <div class="head">
         <a class="name" href="${productPath(p)}" title="${esc(p.name)}">${esc(shortName(p.name))}</a>
         <span class="specs">${chips(p)}</span>
@@ -174,14 +186,21 @@ export async function matchedPage(env) {
         <div class="acts">${storeLink(pc[cheapest], `${esc(pc[cheapest].retailer)} sitesinde gör`)}<a class="more" href="${productPath(p)}">${isPc(p) ? 'Teknik özellikler ve tüm fiyatlar' : 'Tüm fiyatlar'} →</a></div>
       </div>
       <div class="lanes">${lanes(p)}</div>
-    </li>`).join('');
+    </li>`;
+  const sections = GROUPS.filter(([k]) => byGroup[k].length).map(([k, l]) => `
+    <section class="group" data-bolum="${k}" aria-labelledby="g-${k}">
+      <h2 class="sub" id="g-${k}">${l} <small>${byGroup[k].length}</small></h2>
+      <ol class="results">${byGroup[k].map(card).join('')}</ol>
+    </section>`).join('');
   const body = `
     <section class="intro intro-sm">
       <h1>Eşleşen modeller</h1>
       <p>Aynı ürünün birden fazla ülkede satıldığı ve doğrudan karşılaştırılabildiği modeller. Her satırda ülkelere göre en düşük fiyat ve en ucuz ülke görünür. Fiyat satırına dokunursanız ürünü satan mağazanın sayfası yeni sekmede açılır.</p>
     </section>
-    <div class="tabs filter-tabs" role="group" aria-label="Bölüme göre süz">${filters}</div>
-    ${rows.length ? `<ol class="results" id="list">${items}</ol>` : '<p class="empty">Şu anda birden fazla ülkede eşleşen ürün yok. Mağazalar tarandıkça bu liste kendiliğinden dolar.</p>'}`;
+    <div class="tabs filter-tabs match-tabs" role="group" aria-label="Bölüme göre süz">${tabs}</div>
+    ${subs}
+    <p class="count" id="count" aria-live="polite"></p>
+    ${rows.length ? `<div id="list">${sections}</div>` : '<p class="empty">Şu anda birden fazla ülkede eşleşen ürün yok. Mağazalar tarandıkça bu liste kendiliğinden dolar.</p>'}`;
   return html(layout({
     title: 'Eşleşen modeller · Aynı ürünün Türkiye, Yunanistan ve Bulgaristan fiyatları · Üçfiyat',
     description: `Birden fazla ülkede satılan ${rows.length} ürünün Türkiye, Yunanistan ve Bulgaristan fiyatları yan yana; en ucuz ülke işaretli.`,
