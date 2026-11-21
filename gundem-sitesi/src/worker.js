@@ -3,6 +3,7 @@
 // haberleri herkese açık bir haber sitesi olarak yayınlar. /panel paylaşım metinlerini ve kaynak durumunu gösterir.
 import SCHEMA from '../schema.sql';
 import { topla } from './bot.js';
+import { videoIstek } from './video.js';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
 import { haberler, oneCikanlar, haber, sonHaberler } from './veri.js';
 import { kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
@@ -49,6 +50,11 @@ export default {
     if (yol === '/api/calistir' && req.method === 'POST') {
       if (!(await sifreDogru(env, req.headers.get('x-admin-sifre')))) return Response.json({ hata: 'yetkisiz' }, { status: 401 });
       return Response.json(await topla(env));
+    }
+    // Kısa video işleri (GitHub Actions'taki video üreticisi) ve /video/<id>.mp4 dosyaları: src/video.js
+    if (yol.startsWith('/api/video') || yol.startsWith('/video/')) {
+      const v = await videoIstek(req, env, yol);
+      if (v) return v;
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return new Response('İzin verilmiyor', { status: 405 });
 

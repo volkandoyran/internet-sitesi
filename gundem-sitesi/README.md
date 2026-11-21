@@ -21,7 +21,8 @@ Altyapı hazır, **şu an kapalı** çünkü hiçbir platform bağlı değil. Bi
 
 - **Telegram:** BotFather'dan bot oluşturun, kanalınıza yönetici yapın; Cloudflare → *Workers & Pages → gundem-sitesi → Settings → Variables and Secrets* altına `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` (ör. `@kanaladi`) ekleyin.
 - Yeni platform eklemek için `src/paylas.js` içindeki listeye bir bağdaştırıcı yazmak yeterli.
-- Acil durdurma: `OTOMATIK_PAYLASIM` değişkenini `0` yapın.
+- **Kısa videolar (YouTube Shorts, Instagram Reels):** ücretsiz GitHub Actions ile üretilip onaysız paylaşılır; kurulum `video/README.md`.
+- Acil durdurma: `OTOMATIK_PAYLASIM` değişkenini `0` yapın (videolar da durur).
 
 ## Elle çalıştırma
 
