@@ -59,6 +59,9 @@ test('kuru denemede yanlış sınıflananlar', () => {
   assert.deepEqual(classify('VGA BIOSTAR RADEON RX560 4GB GDDR5'), { type: 'part', category: 'gpu' });
   assert.deepEqual(classify('CASE DEEPCOOL MATREXX 40 3FS GAMING MIDI TOWER RGB BLACK'), { type: 'part', category: 'kasa' });
   assert.deepEqual(classify('Кутия за компютър Lian Li Lancool 207, ATX, черна'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('Кутия 1stPlayer MEGAVIEW MV8, ATX/microATX/Mini-ITX, 2x USB 3.0, 7x 120 mm A-RGB вентилатора, черна'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('Кутия APNX V1, ATX/MicroATX/Mini-ITX, 1x USB 3.2, бяла, с прозорец, без захранване'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('Захранване Corsair RM850e, 850W, 80 Plus Gold'), { type: 'part', category: 'psu' });
   assert.deepEqual(classify('PSU FSP SP500-A 450W ATX'), { type: 'part', category: 'psu' });
   assert.deepEqual(classify('Настолен компютър Lenovo IdeaCentre 3'), { type: 'desktop', category: null });
   assert.deepEqual(classify('AOC 25G4KUR 24.5" 420Hz 1ms HDMI DP Fast IPS Gaming Monitör'), { type: 'part', category: 'monitor' });
@@ -74,6 +77,6 @@ test('kuru denemede yanlış sınıflananlar', () => {
     'HONEYWELL ΜΟΝΑΔΑ ΤΡΟΦΟΔΟΤΙΚΟΥ 12V DC/500 MA', 'HAMA 220889 UNIVERSAL SCREEN SHELF FOR TV AND MONITORS, 30.0 X 12.7 CM', 'HAMA 200018 UNIVERSAL USB-C CAR NOTEBOOK POWER SUPP. UNIT',
     'HAMA 101772-216530 NICE NOTEBOOK HARDCASE UP TO 40 CM (15.6) BLACK', 'HAMA 200129 ALL IN ONE USB CARD READER USB-A USB 2.0', 'G-ROC TB-30SA LED NOTEBOOK MONITOR LIGHT BAR 33CM',
     'HAMA 200760 USB HARD DISK HOUSING FOR 2.5 SSD AND HDD HARD DISKS', 'HAMA 200343 CONVERTER HDMI TO VGA', 'HI-DI-HI LB-01 LAPTOP MESSENGER 15.4"',
-    'Barebone сървър Asus RS521A-E12-RS12U', 'KVM суич Aten CS1732B', 'Офис бюро RFG Lisabon (DG02-D0116HB)',
+    'Barebone сървър Asus RS521A-E12-RS12U', 'KVM суич Aten CS1732B', 'Офис бюро RFG Lisabon (DG02-D0116HB)', 'Вентилатор Arctic P12, 120mm',
   ]) assert.equal(classify(n), null, n);
 });
