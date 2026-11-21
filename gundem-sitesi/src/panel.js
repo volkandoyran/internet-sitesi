@@ -53,7 +53,7 @@ export async function listeSayfasi(env, url) {
       : aktif.length ? '<span class="rozet bek">Sırada</span>' : '';
     return `<article class="kart"><div class="ust"><span>${saat(h.ilk_gorulme)}</span>
 ${h.kaynak_sayisi > 1 ? `<span class="rozet cok">${h.kaynak_sayisi} kaynak</span>` : ''}
-<span>${h.metin_turu === 'ai' ? 'Yapay zekâ metni' : 'Şablon metni'}</span>${durum}</div>
+<span>${{ ai: 'Yapay zekâ metni', ceviri: 'Yabancı basından çeviri' }[h.metin_turu] || 'Şablon metni'}</span>${durum}</div>
 <pre id="m${h.id}">${kac(paylasimMetni(h))}</pre>
 <div class="alt"><ul>${h.kaynaklar.map((k) => `<li><a href="${kac(k.url)}" rel="noopener" target="_blank">${kac(k.ad)}</a>: ${kac(k.baslik)}</li>`).join('')}</ul>
 <button data-kopya="m${h.id}">Kopyala</button></div></article>`;

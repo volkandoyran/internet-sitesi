@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rssAyristir, duzMetin, xmlCoz } from '../gundem-sitesi/src/rss.js';
 import { imza, benzerlik, eslesen, urlSade, ESIK } from '../gundem-sitesi/src/ayikla.js';
-import { sablonMetin, temizle, paylasimMetni, GOVDE_SINIR } from '../gundem-sitesi/src/metin.js';
+import { sablonMetin, temizle, paylasimMetni, ceviriAyir, GOVDE_SINIR } from '../gundem-sitesi/src/metin.js';
 
 test('RSS 2.0: CDATA, kaçışlı HTML ve tarih', () => {
   const xml = `<rss><channel><title>Kanal</title><item><title><![CDATA[İstanbul'da sağanak &amp; fırtına]]></title>
@@ -60,7 +60,8 @@ test('model çıktısından bağlantı ve kaynak satırı temizlenir', () => {
 
 test('paylaşım metni kaynağı her zaman içerir', () => {
   const m = paylasimMetni({ metin: 'Gövde', kaynaklar: [{ ad: 'TRT Haber', url: 'https://trt/1' }, { ad: 'NTV', url: 'https://ntv/1' }] });
-  assert.equal(m, 'Gövde\n\nKaynak: TRT Haber (+1 kaynak)\nhttps://trt/1');
+  assert.equal(m, 'Gövde\n\nKaynak: TRT Haber (+1 kaynak)');
+  assert.equal(paylasimMetni({ metin: 'Gövde', kaynaklar: [{ ad: 'BBC News', url: 'https://bbc/1', dil: 'en' }] }), 'Gövde\n\nKaynak: BBC News (Türkçe çeviri)');
   assert.ok(duzMetin('<b>a</b>&nbsp;b') === 'a b');
 });
 
@@ -83,4 +84,18 @@ test('site: göreli zaman', () => {
   const s = Date.parse('2026-11-21T12:00:00Z');
   assert.equal(goreli('2026-11-21T11:59:50Z', s), 'az önce');
   assert.equal(goreli('2026-11-21T09:00:00Z', s), '3 sa önce');
+});
+
+test('çeviri çıktısı: başlık ve metin ayrılır, bozuk çıktı reddedilir', () => {
+  const c = ceviriAyir('BAŞLIK: AB liderleri iklim zirvesinde yeni hedefte uzlaştı.\nMETİN: Avrupa Birliği liderleri, 2040 için emisyonları yüzde 90 azaltma hedefinde anlaştı. #AB #iklim');
+  assert.equal(c.baslik, 'AB liderleri iklim zirvesinde yeni hedefte uzlaştı');
+  assert.match(c.metin, /^Avrupa Birliği liderleri.*#iklim$/);
+  assert.throws(() => ceviriAyir('EU leaders agree on climate target'));
+});
+
+test('site: yabancı haber rozeti ve bağlantısız kaynak', () => {
+  const h = haberiCoz({ id: 3, baslik: 'Başlık', metin: 'Metin', kaynaklar: JSON.stringify([{ ad: 'BBC News', url: 'https://bbc.co.uk/x', dil: 'en' }]), kaynak_sayisi: 1, ilk_gorulme: '2026-11-21T10:00:00Z' });
+  const html = haberKarti(h) + detayGovde(h);
+  assert.match(html, /Yabancı basından çeviri/);
+  assert.doesNotMatch(html, /bbc\.co\.uk/);
 });

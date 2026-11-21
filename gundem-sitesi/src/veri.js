@@ -11,6 +11,7 @@ export function haberiCoz(r) {
     metin: r.metin || '',
     kaynaklar: Array.isArray(kaynaklar) ? kaynaklar.filter((k) => k && /^https?:\/\//.test(k.url || '')) : [],
     kaynak_sayisi: r.kaynak_sayisi || 1,
+    yabanci: Array.isArray(kaynaklar) && Boolean(kaynaklar[0]?.dil),
     zaman: r.ilk_gorulme,
   };
 }

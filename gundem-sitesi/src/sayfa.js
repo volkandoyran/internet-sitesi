@@ -1,5 +1,5 @@
 // Sunucuda üretilen HTML. Kaynak haberlerin metni kopyalanmaz: yalnızca başlık, botun yazdığı
-// kısa özet ve kaynağa giden bağlantılar gösterilir.
+// kısa özet ve haberin alındığı yerin adı gösterilir (bağlantı verilmez).
 
 export const kac = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -46,7 +46,7 @@ article.haber h3 a:hover{text-decoration:underline}
 .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--soluk);margin-bottom:8px}
 .rozet{color:var(--vurgu);border:1px solid currentColor;border-radius:999px;padding:0 8px;font-weight:700;font-size:12px}
 p.ozet{margin:0 0 8px}.etiket{font-size:13px;color:var(--soluk);margin-right:6px}
-.kaynak{font-size:13.5px;color:var(--soluk)}.kaynak a{color:var(--yazi);font-weight:600}
+.kaynak{font-size:13.5px;color:var(--soluk)}.kaynak b{color:var(--yazi)}.rozet.ceviri{color:var(--soluk)}
 .sayfala{display:flex;justify-content:space-between;margin:20px 0}
 .bos{text-align:center;color:var(--soluk);padding:60px 0}
 .detay h1{font:800 clamp(24px,5vw,34px)/1.2 Georgia,"Times New Roman",serif;margin:18px 0 10px}
@@ -69,14 +69,14 @@ ${kanonik ? `<link rel="canonical" href="${kac(kanonik)}">` : ''}
 <header class="ust"><div class="kap"><a class="logo" href="/">${kac(ad.split(' ')[0])} <b>${kac(ad.split(' ').slice(1).join(' '))}</b></a><span class="tarih">${kac(bugun)}</span></div></header>
 <div class="kap"><nav>${sekme('/', 'Son haberler', 'son')}${sekme('/cok-konusulan', 'Çok konuşulanlar', 'cok')}${sekme('/hakkinda', 'Hakkında', 'hakkinda')}</nav>
 <main>${govde}</main>
-<footer>Özetler otomatik hazırlanır; haberlerin tamamı ve sorumluluğu ilgili kaynaklardadır. Her haberde kaynağa bağlantı verilir. <a href="/rss.xml">RSS</a></footer></div>
+<footer>Özetler otomatik hazırlanır; haberlerin tamamı ve sorumluluğu ilgili kaynaklardadır. Her haberde haberin alındığı kaynak belirtilir. <a href="/rss.xml">RSS</a></footer></div>
 </body></html>`;
   return new Response(html, { status: durum, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=120' } });
 }
 
 function kaynakSatiri(h) {
   if (!h.kaynaklar.length) return '';
-  const ilk = h.kaynaklar.slice(0, 3).map((k) => `<a href="${kac(k.url)}" rel="noopener nofollow" target="_blank">${kac(k.ad)}</a>`).join(', ');
+  const ilk = h.kaynaklar.slice(0, 3).map((k) => `<b>${kac(k.ad)}</b>`).join(', ');
   const kalan = h.kaynaklar.length - 3;
   return `<div class="kaynak">Kaynak: ${ilk}${kalan > 0 ? ` ve ${kalan} kaynak daha` : ''}</div>`;
 }
@@ -84,7 +84,7 @@ function kaynakSatiri(h) {
 export function haberKarti(h, simdi) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<article class="haber"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(goreli(h.zaman, simdi))}</time>
-${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}</div>
+${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
 <h3><a href="/haber/${h.id}">${kac(h.baslik)}</a></h3>
 ${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
@@ -116,15 +116,15 @@ export function sayfalama(yol, sayfa, sonraki, ekParam = '') {
 export function detayGovde(h) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<div class="detay"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(tamTarih(h.zaman))}</time>
-${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}</div>
+${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}</div>
 <h1>${kac(h.baslik)}</h1>${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
-<h2 class="bolum">Haberin tamamı için kaynaklar</h2>
-<ul>${h.kaynaklar.map((k) => `<li><a href="${kac(k.url)}" rel="noopener nofollow" target="_blank">${kac(k.ad)}</a>${k.baslik ? `: ${kac(k.baslik)}` : ''}</li>`).join('')}</ul>
+<h2 class="bolum">Kaynak</h2>
+<ul>${h.kaynaklar.map((k) => `<li>${kac(k.ad)}${k.dil ? ' (Türkçe çeviri)' : ''}</li>`).join('')}</ul>
 <p><a href="/">← Tüm haberler</a></p></div>`;
 }
 
 export const HAKKINDA = `<div class="detay"><h1>Hakkında</h1>
-<p>Bu site Türkiye gündemindeki haberleri tek yerde, kısa ve tarafsız özetlerle sunar. Haberler, haber sitelerinin herkese açık RSS akışlarından otomatik olarak toplanır; aynı olayı veren haberler birleştirilir ve kaç kaynakta geçtiği gösterilir.</p>
-<p>Özetler yapay zekâ ya da şablonla, yalnızca haberin başlığı ve kısa açıklamasından yazılır. Haber metinleri ve görseller kopyalanmaz; her haberin tamamı için orijinal kaynağa bağlantı verilir.</p>
+<p>Bu site Türkiye ve dünya gündemindeki haberleri tek yerde, kısa ve tarafsız özetlerle sunar. Haberler, haber sitelerinin herkese açık RSS akışlarından otomatik olarak toplanır; aynı olayı veren haberler birleştirilir ve kaç kaynakta geçtiği gösterilir. Yabancı basındaki önemli haberler Türkçeye çevrilerek eklenir.</p>
+<p>Özetler ve çeviriler yapay zekâ ya da şablonla, yalnızca haberin başlığı ve kısa açıklamasından yazılır. Haber metinleri ve görseller kopyalanmaz; her haberde haberin alındığı kaynak belirtilir.</p>
 <p>Bir haberle ilgili düzeltme ya da kaldırma isteğiniz varsa lütfen ilgili kaynağa ve bize bildirin.</p></div>`;
