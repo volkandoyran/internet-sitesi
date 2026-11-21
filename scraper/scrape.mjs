@@ -3,7 +3,7 @@
 // 3) TRY kurunu alır, 4) sonuçları siteye geri yazar.
 // Gerekli ortam değişkenleri: SITE_URL (ör. https://ucfiyat.<hesap>.workers.dev), ADMIN_PASSWORD
 import { extractPrice } from './extract.mjs';
-import { STORES } from './stores.mjs';
+import { STORES, FC_STORES } from './stores.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
 const PW = process.env.ADMIN_PASSWORD;
@@ -39,7 +39,7 @@ async function fetchPage(url) {
 const allOffers = await (await fetch(`${SITE}/api/admin/offers`, { headers: auth })).json();
 if (!Array.isArray(allOffers)) { console.error('Teklif listesi alınamadı:', allOffers); process.exit(1); }
 // Otomatik katalogdaki mağazaları katalog tarayıcısı günceller
-const offers = allOffers.filter((o) => !STORES[o.retailer_id]);
+const offers = allOffers.filter((o) => !STORES[o.retailer_id] && !(FC_STORES[o.retailer_id] && !o.manual));
 console.log(`${offers.length} bağlantı kontrol edilecek`);
 
 // Aynı siteye art arda yüklenmemek için satıcı başına sırayla, satıcılar arası paralel

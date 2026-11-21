@@ -5,7 +5,7 @@
 // Ortam: SITE_URL, ADMIN_PASSWORD; isteğe bağlı YENI_LIMIT, YENILE_LIMIT, MAGAZA (tek mağaza)
 import { gunzipSync } from 'node:zlib';
 import { extractProduct } from './extract.mjs';
-import { STORES } from './stores.mjs';
+import { STORES, FC_STORES } from './stores.mjs';
 import { classify, isExcluded, specsFromName, matchKey } from '../lib/catalog.js';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
@@ -91,8 +91,71 @@ if (!DRY) {
 const rateMap = await rates();
 console.log('Kur:', rateMap);
 
+// ---------- Firecrawl (engelleyen mağazalar) ----------
+// Anahtar sitede durur; çağrılar site üzerinden yapılır. Her çalıştırmada en fazla FIRECRAWL_LIMIT kredi harcanır
+// (yoksa sitedeki ayar, o da yoksa 8: ücretsiz plan ayda 1.000 kredi ≈ günde 4 çalıştırma × 8).
+let fcLeft = 0;
+try {
+  const r = await fetch(`${SITE}/api/admin/firecrawl`, { headers: auth });
+  const info = r.ok ? await r.json() : {};
+  if (info.enabled) fcLeft = +process.env.FIRECRAWL_LIMIT || info.limit || 0;
+} catch {}
+console.log('Firecrawl kredisi (bu çalıştırma):', fcLeft);
+let fcUsed = 0;
+async function firecrawl(payload) {
+  if (fcLeft <= 0) throw new Error('Firecrawl sınırı doldu');
+  fcLeft--; fcUsed++;
+  const r = await fetch(`${SITE}/api/admin/firecrawl`, {
+    method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(120000),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) throw new Error('Firecrawl: ' + (d.error || r.status));
+  return d;
+}
+async function fetchPage(url, cfg) {
+  if (cfg.firecrawl) return (await firecrawl({ url })).html;
+  try { return await fetchText(url); } catch (e) {
+    if (/HTTP (403|429)/.test(e.message) && fcLeft > 0) return (await firecrawl({ url })).html;
+    throw e;
+  }
+}
+
 const only = process.env.MAGAZA;
 const summary = [];
+
+// Bir ürün sayfasını aç, sınıflandır ve gönderilecekler listesine ekle
+async function processUrl(id, cfg, url, stat, items) {
+  try {
+    const html = await fetchPage(url, cfg);
+    const p = extractProduct(html);
+    if (!p) { if (DRY) console.log('  [bilgi yok]', url, html.length, (html.match(/<title>([^<]{0,100})/) || [])[1]); throw new Error('ürün bilgisi bulunamadı'); }
+    let kind = classify(p.name) || (cfg.kind && !isExcluded(p.name) && cfg.kind(url)) || null;
+    // Fiyatı türüne göre çok düşükse aksesuardır (ör. 8 € "laptop" kılıfı)
+    if (kind && p.price) {
+      const eur = p.currency === 'TRY' ? (rateMap.TRY ? p.price / rateMap.TRY : null) : p.price;
+      const min = ['laptop', 'desktop'].includes(kind.type) ? 150 : ['phone', 'tablet'].includes(kind.type) || kind.category === 'monitor' ? 50 : 15;
+      if (eur != null && eur < min) kind = null;
+    }
+    if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); return; }
+    items.push({
+      retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
+      ...kind, ...specsFromName(p.name, kind),
+      match_key: matchKey(p), price: p.price, currency: p.currency, in_stock: p.in_stock,
+    });
+    stat.eklendi++;
+  } catch (e) {
+    stat.hata++;
+    const k = e.message.slice(0, 60);
+    stat.hatalar[k] = (stat.hatalar[k] || 0) + 1;
+    items.push({ retailer_id: id, url, error: e.message.slice(0, 200) });
+  }
+  if (items.length >= 10) await post(items.splice(0), rateMap, stat);
+}
+
+const staleOf = (id) => known.filter((k) => k.retailer_id === id)
+  .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+
+// 1) Site haritasıyla taranabilen mağazalar (paralel)
 await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).map(async ([id, cfg]) => {
   const stat = { id, harita: 0, aday: 0, yeni: 0, yenilenen: 0, eklendi: 0, atlandi: 0, hata: 0, hatalar: {}, site: {} };
   summary.push(stat);
@@ -103,39 +166,15 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
     if (cfg.order) candidates.sort(cfg.order);
     if (cfg.arrange) candidates.splice(0, candidates.length, ...cfg.arrange(candidates));
     stat.aday = candidates.length;
-    const mine = known.filter((k) => k.retailer_id === id);
+    const mine = staleOf(id);
     const knownSet = new Set(mine.map((k) => k.url));
     const fresh = candidates.filter((u) => !knownSet.has(u)).slice(0, NEW_LIMIT);
-    const stale = mine.sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || ''))).slice(0, REFRESH_LIMIT).map((k) => k.url);
+    const stale = mine.slice(0, REFRESH_LIMIT).map((k) => k.url);
     stat.yeni = fresh.length; stat.yenilenen = stale.length;
     console.log(`${id}: haritada ${all.length}, aday ${candidates.length}, yeni ${fresh.length}, yenilenecek ${stale.length}`);
     const items = [];
     for (const url of [...fresh, ...stale]) {
-      try {
-        const html = await fetchText(url);
-        const p = extractProduct(html);
-        if (!p) { if (DRY) console.log('  [bilgi yok]', url, html.length, (html.match(/<title>([^<]{0,100})/) || [])[1]); throw new Error('ürün bilgisi bulunamadı'); }
-        let kind = classify(p.name) || (cfg.kind && !isExcluded(p.name) && cfg.kind(url)) || null;
-        // Fiyatı türüne göre çok düşükse aksesuardır (ör. 8 € "laptop" kılıfı)
-        if (kind && p.price) {
-          const eur = p.currency === 'TRY' ? (rateMap.TRY ? p.price / rateMap.TRY : null) : p.price;
-          const min = ['laptop', 'desktop'].includes(kind.type) ? 150 : ['phone', 'tablet'].includes(kind.type) || kind.category === 'monitor' ? 50 : 15;
-          if (eur != null && eur < min) kind = null;
-        }
-        if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); continue; }
-        items.push({
-          retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
-          ...kind, ...specsFromName(p.name, kind),
-          match_key: matchKey(p), price: p.price, currency: p.currency, in_stock: p.in_stock,
-        });
-        stat.eklendi++;
-      } catch (e) {
-        stat.hata++;
-        const k = e.message.slice(0, 60);
-        stat.hatalar[k] = (stat.hatalar[k] || 0) + 1;
-        items.push({ retailer_id: id, url, error: e.message.slice(0, 200) });
-      }
-      if (items.length >= 10) await post(items.splice(0), rateMap, stat);
+      await processUrl(id, cfg, url, stat, items);
       await sleep(DELAY + Math.random() * 500);
     }
     if (items.length) await post(items, rateMap, stat);
@@ -146,5 +185,51 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
   }
 }));
 
+// 2) Engelleyen mağazalar: Firecrawl kredisi yettiğince, her çalıştırmada sıradaki mağazalar ve sıradaki arama kelimesi
+const slot = Math.floor(Date.now() / (6 * 3600e3));
+const fcIds = Object.keys(FC_STORES).filter((id) => !only || id === only);
+const rotated = fcIds.map((_, i) => fcIds[(i + slot) % fcIds.length]);
+const perStore = Math.max(4, Math.ceil(fcLeft / 2));
+for (const id of rotated) {
+  if (fcLeft < 2) break;
+  const cfg = FC_STORES[id];
+  const term = cfg.search[slot % cfg.search.length];
+  const stat = { id, firecrawl: true, arama: term, harita: 0, aday: 0, yeni: 0, yenilenen: 0, eklendi: 0, atlandi: 0, hata: 0, hatalar: {}, site: {} };
+  summary.push(stat);
+  try {
+    const budget = Math.min(perStore, fcLeft);
+    const stale = staleOf(id).map((k) => k.url);
+    let fresh = [];
+    if (stale.length < budget) {
+      const { links } = await firecrawl({ mode: 'map', url: cfg.site, search: term });
+      stat.harita = links.length;
+      const knownSet = new Set(stale);
+      const candidates = links.filter((u) => { try { return cfg.accept(u); } catch { return false; } });
+      stat.aday = candidates.length;
+      fresh = candidates.filter((u) => !knownSet.has(u));
+    }
+    // Yeni ve bilinen ürünler dönüşümlü: hem katalog büyüsün hem fiyatlar yenilensin
+    const queue = [];
+    for (let i = 0; queue.length < budget - (fresh.length ? 1 : 0) && (i < fresh.length || i < stale.length); i++) {
+      if (fresh[i]) queue.push(fresh[i]);
+      if (stale[i]) queue.push(stale[i]);
+    }
+    const todo = queue.slice(0, Math.max(0, Math.min(fcLeft, budget)));
+    stat.yeni = todo.filter((u) => fresh.includes(u)).length; stat.yenilenen = todo.length - stat.yeni;
+    console.log(`${id} (Firecrawl, "${term}"): bağlantı ${stat.harita}, aday ${stat.aday}, açılacak ${todo.length}`);
+    const items = [];
+    for (const url of todo) {
+      if (fcLeft <= 0) break;
+      await processUrl(id, cfg, url, stat, items);
+    }
+    if (items.length) await post(items, rateMap, stat);
+  } catch (e) {
+    stat.hata++;
+    stat.hatalar[e.message.slice(0, 60)] = 1;
+    console.error(id, 'başarısız:', e.message);
+  }
+}
+
 console.log('\n=== Özet ===');
 for (const s of summary) console.log(JSON.stringify(s));
+console.log('Harcanan Firecrawl kredisi (yaklaşık):', fcUsed);

@@ -16,6 +16,9 @@ on:
         description: 'Deneme: siteye gönderme (1 = evet)'
         required: false
         default: '0'
+      firecrawl_limit:
+        description: 'Bu çalıştırmada en fazla kaç Firecrawl kredisi (boş = sitedeki ayar)'
+        required: false
 
 concurrency: { group: fiyat, cancel-in-progress: false }
 
@@ -29,6 +32,7 @@ jobs:
       MAGAZA: ${{ inputs.magaza }}
       YENI_LIMIT: ${{ inputs.yeni_limit }}
       KURU: ${{ inputs.kuru }}
+      FIRECRAWL_LIMIT: ${{ inputs.firecrawl_limit }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

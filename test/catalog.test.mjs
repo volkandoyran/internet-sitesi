@@ -62,6 +62,8 @@ test('kuru denemede yanlış sınıflananlar', () => {
   assert.deepEqual(classify('Кутия 1stPlayer MEGAVIEW MV8, ATX/microATX/Mini-ITX, 2x USB 3.0, 7x 120 mm A-RGB вентилатора, черна'), { type: 'part', category: 'kasa' });
   assert.deepEqual(classify('Кутия APNX V1, ATX/MicroATX/Mini-ITX, 1x USB 3.2, бяла, с прозорец, без захранване'), { type: 'part', category: 'kasa' });
   assert.deepEqual(classify('Захранване Corsair RM850e, 850W, 80 Plus Gold'), { type: 'part', category: 'psu' });
+  assert.deepEqual(classify('All in One компютър Acer Aspire C24-2G (DQ.BR4EX.003), осемядрен AMD Ryzen 7 5825U, 16GB DDR4, 512GB SSD NVMe, клавиатура и мишка, No OS'), { type: 'desktop', category: null });
+  assert.deepEqual(classify('Дънна платка ASRock X870E Taichi, X870E, AM5, PCI-E 5.0, 3x Hyper M.2 socket, 2x USB4, EATX'), { type: 'part', category: 'anakart' });
   assert.deepEqual(classify('PSU FSP SP500-A 450W ATX'), { type: 'part', category: 'psu' });
   assert.deepEqual(classify('Настолен компютър Lenovo IdeaCentre 3'), { type: 'desktop', category: null });
   assert.deepEqual(classify('AOC 25G4KUR 24.5" 420Hz 1ms HDMI DP Fast IPS Gaming Monitör'), { type: 'part', category: 'monitor' });

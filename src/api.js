@@ -292,6 +292,29 @@ async function admin(parts, method, request, env, url) {
     if (method === 'POST') return json(await catalogUpsert(env, body));
   }
 
+  // Fiyat çekici için Firecrawl köprüsü: mağaza GitHub'dan gelen isteği engellediğinde sayfa Firecrawl ile alınır.
+  // Anahtar yalnızca Worker'da (FIRECRAWL_API_KEY gizli ayarı) durur.
+  if (res === 'firecrawl' && method === 'GET') {
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'firecrawl_limit'").first();
+    return json({ enabled: !!env.FIRECRAWL_API_KEY, limit: row ? +row.value : 8 });
+  }
+  if (res === 'firecrawl' && method === 'POST') {
+    if (!env.FIRECRAWL_API_KEY) return fail('FIRECRAWL_API_KEY ayarlı değil', 501);
+    if (!/^https?:\/\//.test(body.url || '')) return fail('url gerekli');
+    const map = body.mode === 'map';
+    const r = await fetch(`https://api.firecrawl.dev/v2/${map ? 'map' : 'scrape'}`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + env.FIRECRAWL_API_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify(map
+        ? { url: body.url, search: body.search || undefined, limit: Math.min(+body.limit || 5000, 5000), sitemap: 'include' }
+        : { url: body.url, formats: ['rawHtml'], onlyMainContent: false, proxy: 'auto', maxAge: 6 * 3600 * 1000, timeout: 60000 }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.success === false) return json({ ok: false, status: r.status, error: String(d.error || d.message || r.status).slice(0, 300) }, 502);
+    if (map) return json({ ok: true, links: (d.links || []).map((l) => (typeof l === 'string' ? l : l.url)).filter(Boolean) });
+    return json({ ok: true, html: d.data?.rawHtml || '', status: d.data?.metadata?.statusCode || 200, credits: d.data?.metadata?.creditsUsed ?? null });
+  }
+
   if (res === 'retailers') {
     if (method === 'GET') return json(await retailers(env));
     if (method === 'PUT') {
@@ -332,11 +355,13 @@ async function catalogUpsert(env, body) {
     if (rate > 0) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
   }
   if (stmts.length) await env.DB.batch(stmts.splice(0));
-  const active = new Set((await retailers(env)).filter((r) => r.active).map((r) => r.id));
+  const all = await retailers(env);
+  const known = new Set(all.map((r) => r.id));
+  const hidden = new Set(all.filter((r) => !r.active).map((r) => r.id));
   const now = new Date().toISOString();
   const out = { added: 0, updated: 0, removed: 0, errors: 0, linked: 0 };
   for (const it of items) {
-    if (!active.has(it.retailer_id)) continue;
+    if (!known.has(it.retailer_id)) continue;
     const offer = await env.DB.prepare('SELECT id, product_id, manual FROM offers WHERE retailer_id = ? AND url = ?').bind(it.retailer_id, it.url).first();
     if (it.gone) {
       if (offer && !offer.manual) {
@@ -388,6 +413,12 @@ async function catalogUpsert(env, body) {
     ).bind(productId, it.retailer_id, it.url, it.price, currency, eur, it.in_stock === false ? 0 : 1, now).first();
     await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(row.id, eur).run();
     out.added++;
+    // Engellendiği için gizlenen mağazadan ürün gelmeye başladıysa mağaza yeniden gösterilir
+    if (hidden.has(it.retailer_id)) {
+      await env.DB.prepare('UPDATE retailers SET active = 1 WHERE id = ?').bind(it.retailer_id).run();
+      hidden.delete(it.retailer_id);
+      out.unhidden = (out.unhidden || 0) + 1;
+    }
   }
   return { ok: true, ...out };
 }

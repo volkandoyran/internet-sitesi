@@ -42,6 +42,7 @@ Boş bırakılan alanlar sitede görünmez.
 ## Bilinmesi gerekenler
 
 - **Bot koruması:** MediaMarkt, Public, Kotsovolos gibi büyük siteler otomatik istekleri engelleyebilir. Hangi satıcının çalıştığını admin panelindeki hata sütunu ve Actions kayıtları gösterir.
+- **Firecrawl:** Engelleyen mağazalar (`scraper/stores.mjs` içindeki `FC_STORES`) Firecrawl ile taranır. Anahtar Cloudflare Worker'da `FIRECRAWL_API_KEY` gizli ayarıdır; tarayıcı ona `/api/admin/firecrawl` üzerinden ulaşır. Her çalıştırmada harcanacak en fazla kredi D1 `settings` tablosundaki `firecrawl_limit` (varsayılan 8, ücretsiz plan için) ya da elle çalıştırmadaki `firecrawl_limit` girdisiyle belirlenir. Gizlenmiş bir mağazadan ürün gelmeye başlayınca mağaza sitede yeniden görünür.
 - **Güncellik:** fiyatlar günde 4 kez çekilir. Her çalıştırmada mağaza başına en fazla 400 yeni ürün sayfası açılır; büyük kataloglar birkaç çalıştırmada tamamlanır. 14 günden uzun süredir güncellenemeyen fiyat sitede gösterilmez (elle girilenler hariç).
 - **Kullanım koşulları:** bazı satıcıların koşulları otomatik veri çekmeyi yasaklayabilir. Site büyürse satıcıların ortaklık (affiliate) programları ve ürün veri akışları daha güvenli bir kaynaktır.
 - **Ücretsiz katman sınırları:** Workers günde 100.000 istek (yalnızca ana sayfa ve API sayılır; CSS/JS dosyaları sınırsız ve ücretsiz), D1 günde 5 milyon satır okuma ve 5 GB depolama. GitHub Actions herkese açık depolarda ücretsizdir.
