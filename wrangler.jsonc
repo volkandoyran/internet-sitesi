@@ -12,8 +12,10 @@
   "d1_databases": [
     {
       "binding": "DB",
-      // database_id yok: ilk yayında Cloudflare veritabanını otomatik oluşturur
-      "database_name": "ucfiyat-db"
+      "database_name": "ucfiyat-db",
+      // İlk yayında otomatik oluşturulan veritabanı. Kimlik yazılı olmazsa
+      // önizleme (PR) derlemeleri veritabanını bulamayıp başarısız oluyor.
+      "database_id": "2effe710-b0bc-4aea-aa03-39428de515d4"
     }
   ],
   // schema.sql metin olarak içe aktarılır, tablolar ilk istekte otomatik kurulur

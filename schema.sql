@@ -60,16 +60,21 @@ INSERT OR IGNORE INTO retailers (id, name, country, site, currency) VALUES
   ('mediamarkt-tr','MediaMarkt TR',    'TR', 'https://www.mediamarkt.com.tr',   'TRY'),
   ('itopya',       'İtopya',           'TR', 'https://www.itopya.com',          'TRY'),
   ('incehesap',    'İncehesap',        'TR', 'https://www.incehesap.com',       'TRY'),
+  ('sinerji',      'Sinerji Bilgisayar','TR', 'https://www.sinerji.gen.tr',     'TRY'),
+  ('pckolik',      'PcKolik',          'TR', 'https://pckolik.com.tr',          'TRY'),
   ('plaisio',      'Plaisio',          'GR', 'https://www.plaisio.gr',          'EUR'),
   ('kotsovolos',   'Kotsovolos',       'GR', 'https://www.kotsovolos.gr',       'EUR'),
   ('public',       'Public',           'GR', 'https://www.public.gr',           'EUR'),
   ('mediamarkt-gr','MediaMarkt GR',    'GR', 'https://www.mediamarkt.gr',       'EUR'),
   ('eshop-gr',     'e-shop.gr',        'GR', 'https://www.e-shop.gr',           'EUR'),
+  ('cosmodata',    'Cosmodata',        'GR', 'https://www.cosmodata.gr',        'EUR'),
   ('technopolis',  'Technopolis',      'BG', 'https://www.technopolis.bg',      'EUR'),
   ('technomarket', 'Technomarket',     'BG', 'https://www.technomarket.bg',     'EUR'),
   ('ardes',        'Ardes.bg',         'BG', 'https://ardes.bg',                'EUR'),
   ('desktop-bg',   'Desktop.bg',       'BG', 'https://desktop.bg',              'EUR'),
-  ('laptop-bg',    'Laptop.bg',        'BG', 'https://www.laptop.bg',           'EUR');
+  ('laptop-bg',    'Laptop.bg',        'BG', 'https://www.laptop.bg',           'EUR'),
+  ('jarcomputers', 'JAR Computers',    'BG', 'https://www.jarcomputers.com',    'EUR'),
+  ('plasico',      'Plasico',          'BG', 'https://plasico.bg',              'EUR');
 
 INSERT OR IGNORE INTO settings (key, value) VALUES
   ('rate_TRY', NULL),
