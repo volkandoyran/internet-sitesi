@@ -5,7 +5,9 @@ import SCHEMA from '../schema.sql';
 import { topla } from './bot.js';
 import { videoIstek } from './video.js';
 import { kapakSvg } from './kapak.js';
-import { gorselBilgi } from './gorsel.js';
+import { gorselBilgi, gorselleriDoldur } from './gorsel.js';
+
+export const GORSEL_CRON = '5,15,25,35,45,55 * * * *';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
 import { haberler, oneCikanlar, haber, sonHaberler } from './veri.js';
 import { kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
@@ -39,6 +41,11 @@ async function sifreDogru(env, verilen) {
 export default {
   async scheduled(event, env) {
     await semaKur(env);
+    // Görseller ayrı zamanlayıcıda çalışır (her çalışmanın kendi 50 alt istek hakkı olsun)
+    if (event.cron === GORSEL_CRON) {
+      console.log(JSON.stringify({ gorsel: await gorselleriDoldur(env, {}) }));
+      return;
+    }
     const r = await topla(env, event.scheduledTime);
     console.log(JSON.stringify({ gundemBotu: r }));
   },
