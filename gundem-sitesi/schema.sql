@@ -46,3 +46,13 @@ CREATE TABLE IF NOT EXISTS videolar (
   hata     TEXT,
   zaman    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+-- Haber görselleri: 'wiki' (Wikimedia Commons serbest lisanslı fotoğraf, url = küçük resim adresi),
+-- 'ai' (yapay zekâ ile üretilmiş temsili görsel, GORSEL KV'de g/<id>.jpg), 'yok' (bulunamadı, SVG kapak kullanılır)
+CREATE TABLE IF NOT EXISTS gorseller (
+  haber_id INTEGER PRIMARY KEY,
+  tur      TEXT NOT NULL,
+  url      TEXT,
+  atif     TEXT,
+  zaman    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
