@@ -12,6 +12,10 @@ on:
         description: 'Mağaza başına yeni ürün sayfası sınırı'
         required: false
         default: '400'
+      kuru:
+        description: 'Deneme: siteye gönderme (1 = evet)'
+        required: false
+        default: '0'
 
 concurrency: { group: fiyat, cancel-in-progress: false }
 
@@ -24,6 +28,7 @@ jobs:
       SITE_URL: ${{ vars.SITE_URL }}
       MAGAZA: ${{ inputs.magaza }}
       YENI_LIMIT: ${{ inputs.yeni_limit }}
+      KURU: ${{ inputs.kuru }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,4 +42,5 @@ jobs:
       - name: Mağaza kataloglarını tara (yeni ürünler + fiyatlar)
         run: node scraper/katalog.mjs
       - name: Elle eklenen bağlantıların fiyatlarını çek
+        if: inputs.kuru != '1'
         run: node scraper/scrape.mjs

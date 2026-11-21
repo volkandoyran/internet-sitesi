@@ -66,6 +66,7 @@ async function rates() {
 }
 
 async function post(items, rateMap, stat) {
+  if (DRY) { for (const it of items) console.log('  [kuru]', JSON.stringify(it).slice(0, 400)); return; }
   for (let i = 0; i < items.length; i += 10) {
     const res = await fetch(`${SITE}/api/admin/catalog`, {
       method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
@@ -79,9 +80,14 @@ async function post(items, rateMap, stat) {
 }
 
 // Sitede zaten olan bağlantılar (fiyatı en eski olan önce)
-const knownRes = await fetch(`${SITE}/api/admin/catalog`, { headers: auth });
-if (!knownRes.ok) { console.error('Bilinen bağlantılar alınamadı:', knownRes.status, await knownRes.text()); process.exit(1); }
-const known = await knownRes.json(); // [{retailer_id, url, updated_at}]
+// KURU=1: siteye hiçbir şey göndermeden dener, örnek sonuçları yazar
+const DRY = process.env.KURU === '1';
+let known = []; // [{retailer_id, url, updated_at}]
+if (!DRY) {
+  const knownRes = await fetch(`${SITE}/api/admin/catalog`, { headers: auth });
+  if (!knownRes.ok) { console.error('Bilinen bağlantılar alınamadı:', knownRes.status, await knownRes.text()); process.exit(1); }
+  known = await knownRes.json();
+}
 const rateMap = await rates();
 console.log('Kur:', rateMap);
 
