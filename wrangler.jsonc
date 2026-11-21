@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "internet-sitesi",
+  "name": "ucfiyat",
   "main": "src/worker.js",
   "compatibility_date": "2026-11-21",
   "assets": {
