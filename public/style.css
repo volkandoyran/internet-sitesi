@@ -52,7 +52,8 @@ a { color: inherit; }
 }
 .intro p { max-width: 58ch; color: var(--muted); font-size: 18px; margin: 18px 0 0; }
 
-.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 24px 0 0; max-width: 620px; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 24px 0 0; max-width: 760px; }
+@media (max-width: 560px) { .tabs { grid-template-columns: repeat(2, 1fr); } }
 .tabs button { font: inherit; font-size: 15px; font-weight: 700; line-height: 1.15; color: var(--muted); background: transparent;
   border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px; min-height: 48px; cursor: pointer; }
 .tabs button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }

@@ -106,3 +106,20 @@ test('telefon ve tablet', () => {
   assert.equal(t.storage_gb, 512);
   assert.equal(specsFromName('Samsung Galaxy Tab S10 FE+ 5G, 13.1", 8GB RAM, 128GB', tablet).ram_gb, 8);
 });
+
+test('laptop parçaları', () => {
+  const c = (n) => (classify(n) || {}).category;
+  assert.equal(c('Lenovo IdeaPad 3 15IIL05 Uyumlu Laptop Bataryası'), 'laptop-batarya');
+  assert.equal(c('Батерия за лаптоп HP Pavilion 15, 41Wh'), 'laptop-batarya');
+  assert.equal(c('Notebook Adaptörü 65W 19V Asus Uyumlu'), 'laptop-adaptor');
+  assert.equal(c('Зарядно за лаптоп Dell 90W'), 'laptop-adaptor');
+  assert.equal(c('15.6" 30 Pin LCD Panel for Laptop'), 'laptop-ekran');
+  assert.equal(c('Klavye Lenovo ThinkPad T14 için Türkçe'), 'laptop-klavye');
+  assert.equal(c('Dell Latitude 5420 CPU Fan'), 'laptop-fan');
+  assert.equal(c('Kingston 16GB DDR5 5600MHz SO-DIMM Notebook Ram'), 'ram');
+  // gerçek laptoplar laptop olarak kalmalı
+  assert.equal(classify('Lenovo IdeaPad Slim 3 Intel Core i5 16GB 512GB SSD 15.6" FHD Windows 11 Türkçe Klavye Laptop').type, 'laptop');
+  assert.equal(classify('ASUS Vivobook 15 X1504VA 15.6" FHD Ekran Laptop').type, 'laptop');
+  for (const n of ['Laptop Çantası 15.6 inç Siyah', 'Notebook Soğutucu Stand 5 Fanlı', 'HAMA 200018 UNIVERSAL USB-C CAR NOTEBOOK POWER SUPP. UNIT', 'Logitech K380 Bluetooth Keyboard'])
+    assert.equal(classify(n), null, n);
+});

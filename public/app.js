@@ -12,7 +12,7 @@ function money(eur) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(eur);
 }
 const storage = (gb) => (gb >= 1024 ? `${+(gb / 1024).toFixed(1)} TB` : `${gb} GB`);
-const CATEGORY = { cpu: 'İşlemci', gpu: 'Ekran kartı', ram: 'RAM', ssd: 'SSD', hdd: 'Sabit disk', anakart: 'Anakart', psu: 'Güç kaynağı', kasa: 'Kasa', monitor: 'Monitör' };
+const CATEGORY = { 'laptop-batarya': 'Laptop bataryası', 'laptop-adaptor': 'Laptop adaptörü', 'laptop-ekran': 'Laptop ekranı', 'laptop-klavye': 'Laptop klavyesi', 'laptop-fan': 'Laptop fanı', cpu: 'İşlemci', gpu: 'Ekran kartı', ram: 'RAM', ssd: 'SSD', hdd: 'Sabit disk', anakart: 'Anakart', psu: 'Güç kaynağı', kasa: 'Kasa', monitor: 'Monitör' };
 function specChips(p) {
   return [p.cpu, p.gpu, p.ram_gb && `${p.ram_gb} GB RAM`, p.storage_gb && storage(p.storage_gb),
     p.screen_in && `${p.screen_in}"`, CATEGORY[p.category] || p.category].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
@@ -132,9 +132,9 @@ async function loadAds() {
 const SECTIONS = {
   bilgisayar: { group: 'computer', what: 'bilgisayar', types: [['', 'Laptop ve masaüstü'], ['laptop', 'Laptop'], ['desktop', 'Masaüstü']],
     placeholder: 'ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”' },
-  parca: { group: 'part', what: 'parça', types: [['part', 'Parça']], placeholder: 'ör. RTX 5070, Ryzen 7 7800X3D, 32GB DDR5' },
-  mobil: { group: 'device', what: 'telefon', types: [['mobile', 'Telefon ve tablet'], ['phone', 'Telefon'], ['tablet', 'Tablet']],
-    placeholder: 'ör. iPhone 16, Galaxy A17, iPad Air' },
+  parca: { group: 'part', what: 'parça', types: [['part', 'Parça']], placeholder: 'ör. RTX 5070, Ryzen 7 7800X3D, ThinkPad T14 batarya' },
+  telefon: { group: 'device', what: 'telefon', types: [['phone', 'Telefon']], placeholder: 'ör. iPhone 16, Galaxy A17, Redmi Note 14' },
+  tablet: { group: 'device', what: 'tablet', types: [['tablet', 'Tablet']], placeholder: 'ör. iPad Air, Galaxy Tab S10, Lenovo Tab' },
 };
 function syncFilters() {
   const group = SECTIONS[$('#search').elements.bolum.value].group;
@@ -172,7 +172,7 @@ const narrow = matchMedia('(max-width: 720px)').matches;
 // Adres çubuğundaki aramayı geri yükle
 const init = new URLSearchParams(location.search);
 const startType = init.get('type');
-setSection(init.get('bolum') || ({ part: 'parca', phone: 'mobil', tablet: 'mobil', mobile: 'mobil' }[startType]) || 'bilgisayar');
+setSection(({ mobil: startType === 'tablet' ? 'tablet' : 'telefon' })[init.get('bolum')] || init.get('bolum') || ({ part: 'parca', phone: 'telefon', tablet: 'tablet' }[startType]) || 'bilgisayar');
 for (const [k, v] of init) { const f = $('#search').elements[k]; if (f && k !== 'bolum') f.value = v; }
 if (init.get('cur') === 'TRY') currency = 'TRY';
 if (narrow && ![...init.keys()].some((k) => !['q', 'cur', 'bolum', 'type'].includes(k))) $('.filter-box').open = false;
