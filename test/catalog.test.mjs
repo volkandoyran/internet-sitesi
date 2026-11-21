@@ -49,3 +49,19 @@ test('ürün sayfasından katalog bilgisi', () => {
   const p = extractProduct(es);
   assert.equal(p.name, 'CPU AMD RYZEN 7 7800X3D 4.20GHZ 8-CORE BOXED'); assert.equal(p.price, 309.9); assert.equal(p.currency, 'EUR');
 });
+
+test('kuru denemede yanlış sınıflananlar', () => {
+  assert.deepEqual(classify('ΟΘΟΝΗ DELL P1917S 19" LED VGA DP BLACK'), { type: 'part', category: 'monitor' });
+  assert.deepEqual(classify('othoni asus tuf gaming vg27aqa1a 27 quad hd 170hz black'), { type: 'part', category: 'monitor' });
+  assert.deepEqual(classify('PSU THERMALTAKE TOUGHPOWER GF3 80 PLUS GOLD ACTIVE PFC 1200W'), { type: 'part', category: 'psu' });
+  assert.deepEqual(classify('ASUS TUF Gaming GT502 Horizon Siyah Tempered Glass USB 3.2 ATX Mid Tower Kasa'), { type: 'part', category: 'kasa' });
+  assert.deepEqual(classify('AOC 25G4KUR 24.5" 420Hz 1ms HDMI DP Fast IPS Gaming Monitör'), { type: 'part', category: 'monitor' });
+  for (const n of [
+    'OLYMPIA CPD-425 ΦΟΡΗΤΗ ΑΡΙΘΜΟΜΗΧΑΝΗ ΜΕ ΤΑΙΝΙΑ', 'MACLEAN MC-851 ΒΑΣΗ ΣΤΗΡΙΞΗΣ DESKTOP 10KG',
+    'TP-LINK TL-SF1008LP 8-PORT 10/100 MBPS DESKTOP SWITCH WITH 4-PORT POE', 'TP-LINK TAPO T315 SMART TEMPERATURE AND HUMIDITY MONITOR',
+    'TP-LINK TAPO P110 (2-PACK) MINI SMART WI-FI SOCKET, ENERGY MONITORING', 'MOTOROLA 50-14000-058R POWER SUPPLY',
+    'AKYGA AK-ND-73 ZEBRA POWER SUPPLY 24V / 4.17A 100W 6.3 X 3.0', 'Раница за лаптоп Asus ROG BP1500G, до 15.6"',
+    'Почистващ комплект за LCD монитор', 'Предпазен протектор за Apple MacBook 12, Ultra Thin PC Case',
+    'ASUS TUF Gaming TF120 ARGB 120mm Beyaz Üçlü Kasa Fanı', 'HP Scanjet 2400', 'HP CTRG N339 BLK C8767EE',
+  ]) assert.equal(classify(n), null, n);
+});

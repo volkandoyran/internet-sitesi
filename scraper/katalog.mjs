@@ -6,7 +6,7 @@
 import { gunzipSync } from 'node:zlib';
 import { extractProduct } from './extract.mjs';
 import { STORES } from './stores.mjs';
-import { classify, specsFromName, matchKey } from '../lib/catalog.js';
+import { classify, isExcluded, specsFromName, matchKey } from '../lib/catalog.js';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
 const PW = process.env.ADMIN_PASSWORD;
@@ -100,6 +100,7 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
     const all = await sitemapUrls(cfg);
     stat.harita = all.length;
     const candidates = all.filter((u) => { try { return cfg.accept(u); } catch { return false; } });
+    if (cfg.order) candidates.sort(cfg.order);
     stat.aday = candidates.length;
     const mine = known.filter((k) => k.retailer_id === id);
     const knownSet = new Set(mine.map((k) => k.url));
@@ -112,9 +113,9 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
       try {
         const html = await fetchText(url);
         const p = extractProduct(html);
-        if (!p) throw new Error('ürün bilgisi bulunamadı');
-        const kind = classify(p.name);
-        if (!kind) { stat.atlandi++; items.push({ retailer_id: id, url, gone: true }); continue; }
+        if (!p) { if (DRY) console.log('  [bilgi yok]', url, html.length, (html.match(/<title>([^<]{0,100})/) || [])[1]); throw new Error('ürün bilgisi bulunamadı'); }
+        const kind = classify(p.name) || (cfg.kind && !isExcluded(p.name) && cfg.kind(url)) || null;
+        if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); continue; }
         items.push({
           retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
           ...kind, ...specsFromName(p.name, kind),
