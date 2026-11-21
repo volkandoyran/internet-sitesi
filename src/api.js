@@ -92,6 +92,11 @@ async function search(env, sp) {
   // Metindeki özellikler (ör. "16gb rtx 4060") boş filtreleri doldurur
   const parsed = parseQuery(q);
   for (const k of Object.keys(parsed)) if (!filters[k]) filters[k] = parsed[k];
+  // Tür seçilmediyse yalnızca hazır bilgisayarlar (laptop ve masaüstü) aranır; "all" her şeyi getirir
+  if (!filters.type) filters.type = 'computer';
+  if (filters.type === 'all') filters.type = null;
+  if (filters.type !== 'part') filters.category = null;
+  const typeOk = (p) => !filters.type || (filters.type === 'computer' ? p.type === 'laptop' || p.type === 'desktop' : p.type === filters.type);
 
   const all = await loadProducts(env);
   const priceIn = (p) => {
@@ -99,7 +104,7 @@ async function search(env, sp) {
     return list.length ? list[0].price_eur : null;
   };
   const specOk = (p) =>
-    (!filters.type || p.type === filters.type) &&
+    typeOk(p) &&
     (!filters.category || p.category === filters.category) &&
     (!filters.ram_gb || (p.ram_gb || 0) >= filters.ram_gb) &&
     (!filters.storage_gb || (p.storage_gb || 0) >= filters.storage_gb) &&
@@ -109,7 +114,7 @@ async function search(env, sp) {
 
   // Model adı eşleşmesi: tüm kelimeler isimde/markada/işlemcide geçmeli
   // Özellik kelimeleri (16gb, rtx, i7, laptop...) model adı eşleşmesinden çıkarılır
-  const SPEC_WORD = /^(\d+(gb|tb)|gb|tb|ram|ssd|nvme|hdd|ddr\d?|rtx|gtx|rx|i[3579]|ryzen|core|ultra|laptop|notebook|dizüstü|masaüstü|desktop|pc|\d{1,4})$/;
+  const SPEC_WORD = /^(\d+(gb|tb)|gb|tb|ram|ssd|nvme|hdd|ddr\d?|rtx|gtx|rx|i[3579]|ryzen|core|ultra|laptop|notebook|dizüstü|masaüstü|desktop|pc|telefon|tablet|\d{1,4})$/;
   const words = q.toLocaleLowerCase('tr').split(/\s+/).filter((w) => w.length > 1 && !SPEC_WORD.test(w));
   const hay = (p) => [p.name, p.brand, p.cpu, p.gpu].join(' ').toLocaleLowerCase('tr');
   const nameHit = (p) => words.every((w) => hay(p).includes(w));
@@ -123,9 +128,9 @@ async function search(env, sp) {
     const partial = words.length
       ? all.filter((p) => words.some((w) => w.length > 2 && hay(p).includes(w)))
       : [];
-    const anchor = partial[0] || { type: filters.type || 'laptop', ...filters };
+    const anchor = partial[0] || { ...filters, type: filters.type === 'computer' ? 'laptop' : filters.type };
     similar = all
-      .filter((p) => budgetOk(p) && (!filters.type || p.type === filters.type))
+      .filter((p) => budgetOk(p) && typeOk(p) && (!filters.category || p.category === filters.category))
       .map((p) => ({ p, d: distance(anchor, p) - (partial.includes(p) ? 1 : 0) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, 12)

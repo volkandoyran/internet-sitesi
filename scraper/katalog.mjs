@@ -101,6 +101,7 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
     stat.harita = all.length;
     const candidates = all.filter((u) => { try { return cfg.accept(u); } catch { return false; } });
     if (cfg.order) candidates.sort(cfg.order);
+    if (cfg.arrange) candidates.splice(0, candidates.length, ...cfg.arrange(candidates));
     stat.aday = candidates.length;
     const mine = known.filter((k) => k.retailer_id === id);
     const knownSet = new Set(mine.map((k) => k.url));
@@ -118,7 +119,7 @@ await Promise.all(Object.entries(STORES).filter(([id]) => !only || id === only).
         // Fiyatı türüne göre çok düşükse aksesuardır (ör. 8 € "laptop" kılıfı)
         if (kind && p.price) {
           const eur = p.currency === 'TRY' ? (rateMap.TRY ? p.price / rateMap.TRY : null) : p.price;
-          const min = ['laptop', 'desktop'].includes(kind.type) ? 150 : kind.category === 'monitor' ? 50 : 15;
+          const min = ['laptop', 'desktop'].includes(kind.type) ? 150 : ['phone', 'tablet'].includes(kind.type) || kind.category === 'monitor' ? 50 : 15;
           if (eur != null && eur < min) kind = null;
         }
         if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); continue; }

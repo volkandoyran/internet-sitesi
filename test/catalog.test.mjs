@@ -80,3 +80,27 @@ test('kuru denemede yanlış sınıflananlar', () => {
     'Barebone сървър Asus RS521A-E12-RS12U', 'KVM суич Aten CS1732B', 'Офис бюро RFG Lisabon (DG02-D0116HB)', 'Вентилатор Arctic P12, 120mm',
   ]) assert.equal(classify(n), null, n);
 });
+
+test('telefon ve tablet', () => {
+  const phone = { type: 'phone', category: null };
+  const tablet = { type: 'tablet', category: null };
+  assert.deepEqual(classify('ΚΙΝΗΤΟ POCO X8 PRO 512GB 12GB WHITE'), phone);
+  assert.deepEqual(classify('Смартфон Nothing Phone 4a Pro, 12/256GB, Pink'), phone);
+  assert.deepEqual(classify('МОБИЛЕН ТЕЛЕФОН SAMSUNG GALAXY A17 5G 128GB DS BLACK A176'), phone);
+  assert.deepEqual(classify('Apple iPhone 16 Pro 256GB Natural Titanium'), phone);
+  assert.deepEqual(classify('kinito agm h max rugged smartphone 656 hd 8gb 256gb'), phone);
+  assert.deepEqual(classify('ТАБЛЕТ SAMSUNG GALAXY TAB S11 WIFI 12/128GB GREY X730'), tablet);
+  assert.deepEqual(classify('Таблет Samsung Galaxy Tab A11 (SM-X130NZAEEUE)(сив), 8.7" (22.09cm) 1340x800 TFT дисплей, 8 & 5 MP камери'), tablet);
+  assert.deepEqual(classify('Apple iPad Air 11 M3 128GB Wi-Fi Space Gray'), tablet);
+  assert.deepEqual(classify('Lenovo IdeaPad Slim 3 15IRH10 Laptop'), { type: 'laptop', category: null });
+  for (const n of [
+    'SPIGEN HARD CASE SMART FOLD FOR SAMSUNG GALAXY TAB A11 BLACK', 'Калъф за Apple iPhone 16 Pro, силиконов', 'Стъклен протектор за Samsung Galaxy A17',
+    'Cellular Line Bubble селфи стойка смартфон', 'Моя първи смартфон Eurekakids', 'Wacom One Grafik Tablet', 'BRUDER RAM 2500 POWER WAGON (RED/BLACK)',
+    'EK WATER BLOCKS EK-RAM DOMINATOR MODULE - BLACK', 'Samsung Galaxy Watch 8 44mm', 'Apple Pencil Pro', 'Telefon Tutucu Mıknatıslı',
+  ]) assert.equal(classify(n), null, n);
+  const s = specsFromName('Смартфон Realme 16 Pro Plus 5G 12/512GB Grey 6.8"', phone);
+  assert.equal(s.ram_gb, 12); assert.equal(s.storage_gb, 512); assert.equal(s.screen_in, 6.8); assert.equal(s.cpu, undefined);
+  const t = specsFromName('ΚΙΝΗΤΟ POCO X8 PRO 512GB 12GB WHITE', phone);
+  assert.equal(t.storage_gb, 512);
+  assert.equal(specsFromName('Samsung Galaxy Tab S10 FE+ 5G, 13.1", 8GB RAM, 128GB', tablet).ram_gb, 8);
+});
