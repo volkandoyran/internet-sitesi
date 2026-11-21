@@ -38,14 +38,16 @@ CREATE TABLE IF NOT EXISTS paylasimlar (
   PRIMARY KEY (haber_id, platform)
 );
 
--- Kısa video kaydı (src/video.js). Her haberden en fazla bir video; dosya KV'de (VIDEO) 48 saat durur.
+-- Kısa video kaydı (src/video.js). Her haberden en fazla bir video ya da görsel; dosya KV'de (VIDEO) 48 saat durur.
 CREATE TABLE IF NOT EXISTS videolar (
   haber_id INTEGER PRIMARY KEY,
   durum    TEXT NOT NULL,                 -- 'uretiliyor', 'yuklendi' ya da 'hata'
   dosya    INTEGER NOT NULL DEFAULT 0,    -- 1: dosya yüklendi
   hata     TEXT,
-  zaman    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  zaman    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  tur      TEXT NOT NULL DEFAULT 'video'  -- 'video' (Reels/Shorts) ya da 'foto' (Instagram görsel gönderisi)
 );
+-- Eski kurulumlar için bir kez: ALTER TABLE videolar ADD COLUMN tur TEXT NOT NULL DEFAULT 'video';
 
 -- Haber görselleri: 'wiki' (Wikimedia Commons serbest lisanslı fotoğraf, url = küçük resim adresi),
 -- 'ai' (yapay zekâ ile üretilmiş temsili görsel, GORSEL KV'de g/<id>.jpg), 'yok' (bulunamadı, SVG kapak kullanılır)
