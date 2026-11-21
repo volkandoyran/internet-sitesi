@@ -102,3 +102,27 @@ export function extractProduct(html, fallbackCurrency) {
   if (!name || !found) return null;
   return { name: name.slice(0, 300), brand: brand || null, mpn, image, ...found };
 }
+
+// Ürün sayfasındaki özellik tablosundan (etiket, değer) çiftleri:
+// <tr><td|th>Etiket</td><td>Değer</td></tr>, <dt>/<dd>, JSON-LD additionalProperty.
+// Filtre menüleri gibi çok bağlantılı hücreler (e-shop.gr) atlanır.
+export function extractSpecPairs(html) {
+  const pairs = [];
+  const text = (h) => decodeEntities(String(h).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+  for (const [, row] of String(html).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row.matchAll(/<t([hd])[^>]*>([\s\S]*?)<\/t\1>/gi)].map((m) => m[2]);
+    if (cells.length !== 2) continue;
+    if ((cells[1].match(/<a\b/gi) || []).length > 2) continue;
+    const l = text(cells[0]), v = text(cells[1]);
+    if (l && v && l.length <= 60 && v.length <= 400) pairs.push([l, v]);
+  }
+  for (const [, dl] of String(html).matchAll(/<dl[^>]*>([\s\S]*?)<\/dl>/gi)) {
+    for (const m of dl.matchAll(/<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/gi)) {
+      const l = text(m[1]), v = text(m[2]);
+      if (l && v && l.length <= 60 && v.length <= 400) pairs.push([l, v]);
+    }
+  }
+  const ld = jsonLdProduct(html);
+  for (const p of [].concat(ld?.additionalProperty || [])) if (p && p.name && p.value != null) pairs.push([String(p.name), String(p.value)]);
+  return pairs;
+}

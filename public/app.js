@@ -19,8 +19,20 @@ function specChips(p) {
     p.screen_in && `${p.screen_in}"`, CATEGORY[p.category] || p.category].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
 }
 
+// Ürün sayfası adresi (sunucudaki slug() ile aynı kural)
+const TRL = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sht', ъ: 'a', ь: 'y', ю: 'yu', я: 'ya',
+  α: 'a', β: 'v', γ: 'g', δ: 'd', ε: 'e', ζ: 'z', η: 'i', θ: 'th', ι: 'i', κ: 'k', λ: 'l', μ: 'm', ν: 'n', ξ: 'x', ο: 'o', π: 'p', ρ: 'r', σ: 's', ς: 's', τ: 't', υ: 'y', φ: 'f', χ: 'ch', ψ: 'ps', ω: 'o',
+  ı: 'i', ş: 's', ğ: 'g', ç: 'c', ö: 'o', ü: 'u' };
+const slug = (name) => String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x00-\x7f]/g, (c) => TRL[c] ?? ' ')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70).replace(/-+$/, '') || 'urun';
+const productUrl = (p) => `/urun/${p.id}-${slug(p.name)}`;
+
+// Ülke başına en ucuz teklif (stokta olan önce); satır mağazanın ürün sayfasına gider
 function lanes(p) {
-  const perCountry = COUNTRIES.map(([cc]) => p.offers.find((o) => o.country === cc) || null);
+  const perCountry = COUNTRIES.map(([cc]) => {
+    const list = p.offers.filter((o) => o.country === cc);
+    return list.find((o) => o.in_stock !== 0) || list[0] || null;
+  });
   const prices = perCountry.filter(Boolean).map((o) => o.price_eur);
   const max = Math.max(...prices, 1);
   const min = Math.min(...prices);
@@ -28,9 +40,11 @@ function lanes(p) {
     const [cc, label] = COUNTRIES[i];
     if (!o) return `<div class="lane ${cc} none"><span class="cc" title="${label}">${cc}</span><div class="bar"><div class="txt">Bu ülkede satıcı yok</div></div></div>`;
     const best = prices.length > 1 && o.price_eur === min;
-    return `<div class="lane ${cc}${best ? ' best' : ''}"><span class="cc" title="${label}">${cc}</span>
-      <div class="bar"><div class="fill" style="width:${Math.round((o.price_eur / max) * 100)}%"></div>
-      <div class="txt"><span class="price">${money(o.price_eur)}</span><span class="shop">${best ? 'En ucuz · ' : ''}${esc(o.retailer)}</span></div></div></div>`;
+    const inner = `<div class="fill" style="width:${Math.round((o.price_eur / max) * 100)}%"></div>
+      <div class="txt"><span class="price">${money(o.price_eur)}</span><span class="shop">${best ? 'En ucuz · ' : ''}${esc(o.retailer)}${o.url ? ' <span aria-hidden="true">↗</span>' : ''}</span></div>`;
+    return `<div class="lane ${cc}${best ? ' best' : ''}"><span class="cc" title="${label}">${cc}</span>${o.url
+      ? `<a class="bar" href="${esc(o.url)}" target="_blank" rel="nofollow noopener" aria-label="${label}: ${esc(o.retailer)} sitesinde gör (yeni sekme)">${inner}</a>`
+      : `<div class="bar">${inner}</div>`}</div>`;
   }).join('');
 }
 
@@ -65,13 +79,17 @@ async function toggleDetail(li, p, head) {
   if (!r || r.error) { box.textContent = 'Ayrıntılar yüklenemedi. Sayfayı yenileyip tekrar deneyin.'; return; }
   box.dataset.loaded = '1';
   const rows = r.product.offers.map((o) => `<tr>
-      <td>${esc(o.country)}</td><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="nofollow noopener sponsored">${esc(o.retailer)}</a>` : esc(o.retailer)}</td>
+      <td>${esc(o.country)}</td><td>${esc(o.retailer)}</td>
       <td class="num ${o.in_stock === 0 ? 'out' : ''}">${money(o.price_eur)}</td>
       <td>${o.currency === 'TRY' ? esc(new Intl.NumberFormat('tr-TR').format(o.price)) + ' ₺' : ''}</td>
       <td>${o.in_stock === 0 ? 'Stokta yok' : 'Stokta'}</td>
-      <td>${o.updated_at ? new Date(o.updated_at).toLocaleDateString('tr-TR') : ''}</td></tr>`).join('');
+      <td>${o.updated_at ? new Date(o.updated_at).toLocaleDateString('tr-TR') : ''}</td>
+      <td class="act">${o.url ? `<a class="go" href="${esc(o.url)}" target="_blank" rel="nofollow noopener" title="${esc(o.retailer)} sitesinde aç (yeni sekme)">Mağazada gör <span aria-hidden="true">↗</span></a>` : ''}</td></tr>`).join('');
+  const isPc = ['laptop', 'desktop'].includes(r.product.type);
   const sim = r.similar.map((s) => `<button type="button" data-id="${s.id}">${esc(s.name)}<br><b>${money(s.best?.price_eur)}</b> · ${esc(s.best?.retailer || '')}</button>`).join('');
-  box.innerHTML = `<table class="offers"><thead><tr><th>Ülke</th><th>Satıcı</th><th>Fiyat</th><th>Yerel</th><th>Durum</th><th>Güncelleme</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Henüz fiyat yok.</td></tr>'}</tbody></table>
+  box.innerHTML = `<table class="offers"><thead><tr><th>Ülke</th><th>Satıcı</th><th>Fiyat</th><th>Yerel</th><th>Durum</th><th>Güncelleme</th><th><span class="sr">Bağlantı</span></th></tr></thead><tbody>${rows || '<tr><td colspan="7">Henüz fiyat yok.</td></tr>'}</tbody></table>
+    <p class="redirect-note">"Mağazada gör" sizi ürünü satan mağazanın sitesine götürür. Üçfiyat satış yapmaz.</p>
+    <p><a class="more" href="${productUrl(r.product)}">${isPc ? 'Teknik özellikler ve ürün sayfası' : 'Ürün sayfası'} →</a></p>
     ${sim ? `<h3 class="sub" style="font-size:16px;margin:16px 0 0">Benzer özellikte</h3><div class="mini">${sim}</div>` : ''}`;
   box.querySelectorAll('.mini button').forEach((b) => b.addEventListener('click', () => {
     $('#q').value = r.similar.find((s) => s.id === +b.dataset.id).name;

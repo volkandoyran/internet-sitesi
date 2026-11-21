@@ -7,7 +7,7 @@
     "directory": "public",
     "binding": "ASSETS",
     // Yalnızca bu yollar Worker'dan geçer; CSS/JS gibi dosyalar doğrudan (ücretsiz ve sınırsız) sunulur
-    "run_worker_first": ["/", "/index.html", "/api/*", "/ads.txt"]
+    "run_worker_first": ["/", "/index.html", "/api/*", "/ads.txt", "/sitemap.xml", "/eslesen", "/ozellikler", "/urun/*"]
   },
   "d1_databases": [
     {

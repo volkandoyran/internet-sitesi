@@ -4,7 +4,8 @@
 // 3) addan tür/kategori/özellik ve eşleştirme anahtarı çıkarır, 4) sonuçları siteye gönderir.
 // Ortam: SITE_URL, ADMIN_PASSWORD; isteğe bağlı YENI_LIMIT, YENILE_LIMIT, MAGAZA (tek mağaza)
 import { gunzipSync } from 'node:zlib';
-import { extractProduct } from './extract.mjs';
+import { extractProduct, extractSpecPairs } from './extract.mjs';
+import { specsFromPairs, columnsFromSpecs } from '../lib/pcspecs.js';
 import { STORES, FC_STORES } from './stores.mjs';
 import { classify, isExcluded, specsFromName, matchKey, modelKeys } from '../lib/catalog.js';
 import { runMatching } from './eslestir.mjs';
@@ -144,10 +145,18 @@ async function processUrl(id, cfg, url, stat, items) {
     }
     if (!kind) { stat.atlandi++; if (DRY) console.log('  [atlandı]', p.name); items.push({ retailer_id: id, url, gone: true }); return; }
     const specs = specsFromName(p.name, kind);
+    // Bilgisayarlarda mağaza sayfasındaki özellik tablosu da okunur (ek istek yok, aynı sayfa)
+    let page = null;
+    if (['laptop', 'desktop'].includes(kind.type)) {
+      page = specsFromPairs(extractSpecPairs(html));
+      if (!Object.keys(page).length) page = null;
+      else Object.assign(specs, columnsFromSpecs(page));
+      if (DRY && page) console.log('  [özellik]', JSON.stringify(page).slice(0, 400));
+    }
     const match_key = matchKey(p);
     items.push({
       retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
-      ...kind, ...specs,
+      ...kind, ...specs, ...(page ? { specs: page } : {}),
       match_key, keys: modelKeys({ ...p, ...kind, ...specs, match_key }),
       price: p.price, currency: p.currency, in_stock: p.in_stock,
     });
