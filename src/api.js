@@ -344,7 +344,24 @@ async function admin(parts, method, request, env, url) {
   // Anahtar yalnızca Worker'da (FIRECRAWL_API_KEY gizli ayarı) durur.
   if (res === 'firecrawl' && method === 'GET') {
     const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'firecrawl_limit'").first();
-    return json({ enabled: !!env.FIRECRAWL_API_KEY, limit: row ? +row.value : 8 });
+    const out = { enabled: !!env.FIRECRAWL_API_KEY, limit: row ? +row.value : 8, remaining: null, renews: null };
+    // Kalan kredi ve dönem sonu: kredi bitince tarayıcı hata vermeden bekler, yenilenince kendiliğinden devam eder.
+    // Elle sınır yoksa kalan kredi dönem sonuna kadarki çalıştırmalara (günde 4) eşit bölünür.
+    if (env.FIRECRAWL_API_KEY) {
+      try {
+        const r = await fetch('https://api.firecrawl.dev/v2/team/credit-usage', { headers: { authorization: 'Bearer ' + env.FIRECRAWL_API_KEY } });
+        const d = r.ok ? (await r.json()).data || {} : {};
+        if (Number.isFinite(+d.remainingCredits)) {
+          out.remaining = Math.max(0, +d.remainingCredits);
+          out.renews = d.billingPeriodEnd || null;
+          const end = Date.parse(d.billingPeriodEnd || '');
+          const runsLeft = Number.isFinite(end) ? Math.max(1, Math.ceil((end - Date.now()) / (6 * 3600e3))) : 30 * 4;
+          if (!row) out.limit = Math.min(60, Math.max(8, Math.floor(out.remaining / runsLeft)));
+          out.limit = Math.min(out.limit, out.remaining);
+        }
+      } catch {}
+    }
+    return json(out);
   }
   if (res === 'firecrawl' && method === 'POST') {
     if (!env.FIRECRAWL_API_KEY) return fail('FIRECRAWL_API_KEY ayarlı değil', 501);
@@ -358,7 +375,8 @@ async function admin(parts, method, request, env, url) {
         : { url: body.url, formats: ['rawHtml'], onlyMainContent: false, proxy: 'auto', maxAge: 6 * 3600 * 1000, timeout: 60000 }),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok || d.success === false) return json({ ok: false, status: r.status, error: String(d.error || d.message || r.status).slice(0, 300) }, 502);
+    // 402: kredi bitti. Tarayıcı bunu hata saymaz, Firecrawl'ı bu çalıştırmada bırakır.
+    if (!r.ok || d.success === false) return json({ ok: false, status: r.status, exhausted: r.status === 402, error: String(d.error || d.message || r.status).slice(0, 300) }, 502);
     if (map) return json({ ok: true, links: (d.links || []).map((l) => (typeof l === 'string' ? l : l.url)).filter(Boolean) });
     return json({ ok: true, html: d.data?.rawHtml || '', status: d.data?.metadata?.statusCode || 200, credits: d.data?.metadata?.creditsUsed ?? null });
   }
@@ -466,9 +484,10 @@ async function catalogUpsert(env, body) {
       p.mkeys = keys.length ? ` ${keys.join(' ')} ` : null;
       const sp = cleanSpecs(it.specs);
       p.specs = sp ? JSON.stringify(sp) : null;
-      const keys = Object.keys(p).filter((k) => p[k] != null);
-      const row = await env.DB.prepare(`INSERT INTO products (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')}) RETURNING id`)
-        .bind(...keys.map((k) => p[k])).first();
+      // Not: dıştaki "keys" (eşleştirme anahtarları) ile karışmasın; aynı ad 22 Kasım'da tüm yeni ürün kayıtlarını durdurmuştu
+      const cols = Object.keys(p).filter((k) => p[k] != null);
+      const row = await env.DB.prepare(`INSERT INTO products (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) RETURNING id`)
+        .bind(...cols.map((k) => p[k])).first();
       productId = row.id;
     }
     const row = await env.DB.prepare(

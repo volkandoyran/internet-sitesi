@@ -95,7 +95,7 @@ console.log('Kur:', rateMap);
 
 // ---------- Firecrawl (engelleyen mağazalar) ----------
 // Anahtar sitede durur; çağrılar site üzerinden yapılır. Her çalıştırmada en fazla FIRECRAWL_LIMIT kredi harcanır
-// (yoksa sitedeki ayar, o da yoksa 8: ücretsiz plan ayda 1.000 kredi ≈ günde 4 çalıştırma × 8).
+// (yoksa sitedeki ayar, o da yoksa kalan kredinin dönem sonuna kadarki çalıştırmalara eşit payı, en az 8).
 let fcLeft = 0;
 try {
   const r = await fetch(`${SITE}/api/admin/firecrawl`, { headers: auth });
@@ -103,8 +103,14 @@ try {
   // Çalıştırırken 0 girilirse Firecrawl hiç kullanılmaz (önceden 0, "sitedeki ayar" sayılıyordu)
   const asked = (process.env.FIRECRAWL_LIMIT || '').trim();
   if (info.enabled) fcLeft = asked !== '' ? Math.max(0, +asked || 0) : info.limit || 0;
+  if (info.remaining != null) {
+    fcLeft = Math.min(fcLeft, info.remaining);
+    console.log('Firecrawl hesabında kalan kredi:', info.remaining, info.renews ? `(yenilenme: ${info.renews})` : '');
+    if (info.remaining === 0) console.log('Firecrawl kredisi bitti: engelleyen mağazalar bu turda atlanıyor, kredi yenilenince kendiliğinden devam edilecek.');
+  }
 } catch {}
 console.log('Firecrawl kredisi (bu çalıştırma):', fcLeft);
+let fcExhausted = false;
 let fcUsed = 0;
 async function firecrawl(payload) {
   if (fcLeft <= 0) throw new Error('Firecrawl sınırı doldu');
@@ -113,6 +119,13 @@ async function firecrawl(payload) {
     method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(120000),
   });
   const d = await r.json().catch(() => ({}));
+  if (d.exhausted) {
+    // Kredi çalıştırma ortasında bitti: kalan Firecrawl işleri sessizce bırakılır, bir sonraki turda yeniden denenir
+    fcLeft = 0; fcUsed--;
+    if (!fcExhausted) console.log('Firecrawl kredisi bitti; kalan engelleyen mağazalar kredi yenilenince taranacak.');
+    fcExhausted = true;
+    throw new Error('Firecrawl kredisi bitti');
+  }
   if (!r.ok || !d.ok) throw new Error('Firecrawl: ' + (d.error || r.status));
   return d;
 }
@@ -162,6 +175,7 @@ async function processUrl(id, cfg, url, stat, items) {
     });
     stat.eklendi++;
   } catch (e) {
+    if (fcExhausted) return; // kredi bitti: hata sayılmaz, ürün de hatalı işaretlenmez
     stat.hata++;
     const k = e.message.slice(0, 60);
     stat.hatalar[k] = (stat.hatalar[k] || 0) + 1;
@@ -242,6 +256,7 @@ for (const id of rotated) {
     }
     if (items.length) await post(items, rateMap, stat);
   } catch (e) {
+    if (fcExhausted) break;
     stat.hata++;
     stat.hatalar[e.message.slice(0, 60)] = 1;
     console.error(id, 'başarısız:', e.message);
