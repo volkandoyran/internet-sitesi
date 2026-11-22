@@ -229,3 +229,11 @@ test('tüm haberler listesi: gün başlıkları, kaynak ve etiket', async () => 
   assert.match(html, /href="\/haber\/2">Haber 2<\/a>.*BBC News · Dünya/s);
   assert.match(tumListe([]), /Bu seçimde haber yok/);
 });
+
+test('gorselBayt: base64 ve akış yanıtlarını bayta çevirir', async () => {
+  const { gorselBayt } = await import('../gundem-sitesi/src/gorsel.js');
+  assert.deepEqual([...(await gorselBayt({ image: btoa('abc') }))], [97, 98, 99]);
+  assert.deepEqual([...(await gorselBayt(new Response(new Uint8Array([1, 2])).body))], [1, 2]);
+  assert.equal(await gorselBayt({}), null);
+  assert.equal(await gorselBayt(null), null);
+});
