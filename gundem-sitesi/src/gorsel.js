@@ -17,10 +17,10 @@ export const gorselAyarlari = (env) => ({
 });
 
 export const CIKARMA_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
-// Hafif model: 768x432 (2 karo) ≈ 52 nöron; eski flux-1-schnell 1024x1024 ≈ 170 nörondu.
+// Hafif model: 768x432 ölçümde ≈ 104 nöron çıktı; 640x360 (tek 512x512 karo alanından küçük) daha ucuz olmalı. Eski flux-1-schnell ≈ 170 nöron.
 export const GORSEL_MODEL = '@cf/black-forest-labs/flux-2-klein-4b';
 export const YEDEK_GORSEL_MODEL = '@cf/black-forest-labs/flux-1-schnell';
-export const GORSEL_EN = 768, GORSEL_BOY = 432;
+export const GORSEL_EN = 640, GORSEL_BOY = 360;
 const UA = { 'user-agent': 'GundemOzeti/1.0 (haber sitesi; Wikimedia API)' };
 
 const CIKARMA_SISTEM = `Bir haber başlığı ve kısa metni verilecek. Yalnızca JSON yaz, başka hiçbir şey yazma:
