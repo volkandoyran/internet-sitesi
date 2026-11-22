@@ -130,6 +130,7 @@ test('görsel: kişi adı eşleştirme ve JSON ayıklama', () => {
   assert.equal(adUyar('Ali Koç', 'Koç Holding'), false);
   assert.deepEqual(jsonAyikla('Yanıt: {"kisi": "Ali Veli", "sahne": "x"} bitti'), { kisi: 'Ali Veli', sahne: 'x' });
   assert.deepEqual(jsonAyikla('json yok'), {});
+  assert.deepEqual(jsonAyikla({ kisi: 'Ali Veli', sahne: 'x' }), { kisi: 'Ali Veli', sahne: 'x' });
 });
 
 test('görsel: Wikipedia fotoğrafı yalnızca serbest lisans ve ad uyuşursa alınır', async () => {
