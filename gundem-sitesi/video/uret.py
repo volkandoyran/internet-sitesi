@@ -68,7 +68,8 @@ def log(*a):
 
 
 def istek(url, *, method='GET', veri=None, basliklar=None, json_veri=None, zaman=60):
-    b = dict(basliklar or {})
+    # Cloudflare varsayılan Python-urllib imzasını engelliyor (hata 1010); tanımlı bir istemci adı gönder
+    b = {'user-agent': 'gundem-video/1.0 (+github-actions)', **(basliklar or {})}
     if json_veri is not None:
         veri = json.dumps(json_veri).encode()
         b['content-type'] = 'application/json'
