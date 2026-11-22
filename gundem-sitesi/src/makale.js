@@ -10,7 +10,7 @@ export const ICERIK_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
 export const icerikAyarlari = (env) => ({
   limit: sayi(env.ICERIK_LIMIT, 5),       // çalışma başına haber
-  gunluk: sayi(env.ICERIK_GUNLUK, 120),   // 24 saatte en fazla yapay zekâ metni (~35 nöron/adet)
+  gunluk: sayi(env.ICERIK_GUNLUK, 100),   // 24 saatte en fazla yapay zekâ metni (~25 nöron/adet)
   kaynakSiniri: 3500,                     // kaynak başına modele verilecek en fazla karakter
 });
 
@@ -116,6 +116,8 @@ export async function icerikleriDoldur(env, rapor = {}) {
     if (kaynak) {
       try { metin = await icerikYaz(env, h, kaynak); tur = 'ai'; }
       catch (e) {
+        // Ücretsiz günlük kota bittiyse (4006) nöron harcanmadı: kayıt düşmeden çalışmayı bitir
+        if (/4006|daily free allocation/i.test(String(e?.message || e))) { rapor.kota = true; break; }
         // Hata da günlük sınırdan sayılır ve 6 saat sonra yeniden denenir; üst üste 2 hatada çalışma durur (nöron israfı olmasın)
         say('hata'); rapor.sonHata = String(e?.message || e).slice(0, 200);
         await env.DB.prepare("INSERT OR REPLACE INTO icerikler (haber_id, tur, metin, kaynak_uzunluk) VALUES (?, 'hata', NULL, ?)").bind(h.id, kaynak.length).run();

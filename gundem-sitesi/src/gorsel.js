@@ -12,12 +12,12 @@ const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Nu
 export const gorselAyarlari = (env) => ({
   limit: sayi(env.GORSEL_LIMIT, 9),        // görsel çalışması başına haber (ücretsiz planın 50 alt istek sınırına sığar)
   aiLimit: sayi(env.GORSEL_AI_LIMIT, 3),   // çalışma başına yapay zekâ görseli
-  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 60), // 24 saatte en fazla yapay zekâ görseli (hafif model ~50 nöron/adet, ücretsiz kotaya sığsın)
+  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 35), // 24 saatte en fazla yapay zekâ görseli (~104 nöron/adet; ücretsiz 10.000 nöron metinlerle paylaşılıyor)
   saklaGun: sayi(env.SAKLA_GUN, 7),
 });
 
 export const CIKARMA_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
-// Hafif model: 768x432 ölçümde ≈ 104 nöron çıktı; 640x360 (tek 512x512 karo alanından küçük) daha ucuz olmalı. Eski flux-1-schnell ≈ 170 nöron.
+// Hafif model: ölçümde boyuttan bağımsız ≈ 104 nöron/görsel (eski flux-1-schnell ≈ 170).
 export const GORSEL_MODEL = '@cf/black-forest-labs/flux-2-klein-4b';
 export const YEDEK_GORSEL_MODEL = '@cf/black-forest-labs/flux-1-schnell';
 export const GORSEL_EN = 640, GORSEL_BOY = 360;
