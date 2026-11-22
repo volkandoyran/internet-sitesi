@@ -12,15 +12,15 @@ const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Nu
 export const gorselAyarlari = (env) => ({
   limit: sayi(env.GORSEL_LIMIT, 9),        // görsel çalışması başına haber (ücretsiz planın 50 alt istek sınırına sığar)
   aiLimit: sayi(env.GORSEL_AI_LIMIT, 3),   // çalışma başına yapay zekâ görseli
-  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 100), // 24 saatte en fazla yapay zekâ görseli (hafif model ~50 nöron/adet, ücretsiz kotaya sığsın)
+  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 35), // 24 saatte en fazla yapay zekâ görseli (~104 nöron/adet; ücretsiz 10.000 nöron metinlerle paylaşılıyor)
   saklaGun: sayi(env.SAKLA_GUN, 7),
 });
 
 export const CIKARMA_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
-// Hafif model: 768x432 (2 karo) ≈ 52 nöron; eski flux-1-schnell 1024x1024 ≈ 170 nörondu.
+// Hafif model: ölçümde boyuttan bağımsız ≈ 104 nöron/görsel (eski flux-1-schnell ≈ 170).
 export const GORSEL_MODEL = '@cf/black-forest-labs/flux-2-klein-4b';
 export const YEDEK_GORSEL_MODEL = '@cf/black-forest-labs/flux-1-schnell';
-export const GORSEL_EN = 768, GORSEL_BOY = 432;
+export const GORSEL_EN = 640, GORSEL_BOY = 360;
 const UA = { 'user-agent': 'GundemOzeti/1.0 (haber sitesi; Wikimedia API)' };
 
 const CIKARMA_SISTEM = `Bir haber başlığı ve kısa metni verilecek. Yalnızca JSON yaz, başka hiçbir şey yazma:

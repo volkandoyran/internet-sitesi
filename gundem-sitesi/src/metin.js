@@ -1,7 +1,9 @@
 // Her haber için kısa sosyal medya metni. Gövdeyi Workers AI yazar (yoksa ya da hata verirse
 // şablon kullanılır); kaynak satırı her zaman kodla eklenir ki kaynak asla eksik ya da uydurma olmasın.
 
-export const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+// Hafif model (düşünme kapalı): 70B'nin yaklaşık üçte biri nöron harcar; ücretsiz kotaya sığmak için
+export const MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const DUSUNME_YOK = { chat_template_kwargs: { enable_thinking: false } };
 export const GOVDE_SINIR = 220;
 
 const SISTEM = `Türkçe haber editörüsün. Verilen başlık ve özetten sosyal medya için en fazla ${GOVDE_SINIR} karakterlik kısa bir paylaşım metni yaz.
@@ -57,6 +59,7 @@ export async function aiMetin(env, { baslik, ozet }) {
     ],
     max_tokens: 180,
     temperature: 0.4,
+    ...DUSUNME_YOK,
   });
   const ham = typeof r === 'string' ? r : r?.response ?? r?.choices?.[0]?.message?.content ?? '';
   let t = temizle(ham);
@@ -98,6 +101,7 @@ export async function aiCeviri(env, { baslik, ozet }) {
     ],
     max_tokens: 220,
     temperature: 0.3,
+    ...DUSUNME_YOK,
   });
   return ceviriAyir(typeof r === 'string' ? r : r?.response ?? r?.choices?.[0]?.message?.content ?? '');
 }
