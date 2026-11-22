@@ -25,16 +25,18 @@ async function guvenli(sorgu) {
 
 const ALANLAR = 'id, baslik, metin, kaynaklar, kaynak_sayisi, ilk_gorulme';
 
-export async function haberler(env, { sayfa = 1, cok = false, ara = '' } = {}) {
+export async function haberler(env, { sayfa = 1, cok = false, ara = '', boy = SAYFA_BOYU, bolge = '' } = {}) {
   const kosul = ['metin IS NOT NULL'];
   const param = [];
+  if (bolge === 'dunya') kosul.push("json_extract(kaynaklar, '$[0].dil') IS NOT NULL");
+  if (bolge === 'turkiye') kosul.push("json_extract(kaynaklar, '$[0].dil') IS NULL");
   if (cok) kosul.push('kaynak_sayisi > 1');
   if (ara) { kosul.push('(baslik LIKE ? OR metin LIKE ?)'); param.push(`%${ara}%`, `%${ara}%`); }
   const sql = `SELECT ${ALANLAR} FROM haberler WHERE ${kosul.join(' AND ')}
     ORDER BY ilk_gorulme DESC LIMIT ? OFFSET ?`;
-  const r = await guvenli(() => env.DB.prepare(sql).bind(...param, SAYFA_BOYU + 1, (sayfa - 1) * SAYFA_BOYU).all());
+  const r = await guvenli(() => env.DB.prepare(sql).bind(...param, boy + 1, (sayfa - 1) * boy).all());
   const satir = r?.results || [];
-  return { liste: satir.slice(0, SAYFA_BOYU).map(haberiCoz), sonraki: satir.length > SAYFA_BOYU };
+  return { liste: satir.slice(0, boy).map(haberiCoz), sonraki: satir.length > boy };
 }
 
 // Son 24 saatte en çok kaynağın verdiği haberler
@@ -53,4 +55,9 @@ export async function haber(env, id) {
 export async function sonHaberler(env, adet) {
   const r = await guvenli(() => env.DB.prepare(`SELECT ${ALANLAR} FROM haberler WHERE metin IS NOT NULL ORDER BY ilk_gorulme DESC LIMIT ?`).bind(adet).all());
   return (r?.results || []).map(haberiCoz);
+}
+
+export async function haberSayisi(env) {
+  const r = await guvenli(() => env.DB.prepare('SELECT count(*) n FROM haberler WHERE metin IS NOT NULL').first());
+  return r?.n || 0;
 }

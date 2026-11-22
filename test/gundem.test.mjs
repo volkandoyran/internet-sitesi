@@ -130,6 +130,7 @@ test('görsel: kişi adı eşleştirme ve JSON ayıklama', () => {
   assert.equal(adUyar('Ali Koç', 'Koç Holding'), false);
   assert.deepEqual(jsonAyikla('Yanıt: {"kisi": "Ali Veli", "sahne": "x"} bitti'), { kisi: 'Ali Veli', sahne: 'x' });
   assert.deepEqual(jsonAyikla('json yok'), {});
+  assert.deepEqual(jsonAyikla({ kisi: 'Ali Veli', sahne: 'x' }), { kisi: 'Ali Veli', sahne: 'x' });
 });
 
 test('görsel: Wikipedia fotoğrafı yalnızca serbest lisans ve ad uyuşursa alınır', async () => {
@@ -163,6 +164,9 @@ test('şehit haberi: yaslı şablon, başsağlığı, koyu kapak, rozet', async 
   const m = await aiMetin(env, h);
   assert.ok(m.endsWith(`${BASSAGLIGI} #şehit`));
   assert.equal(m.split(BASSAGLIGI).length, 2);
+  const env2 = { AI: { run: async () => ({ response: 'Askerimiz şehit oldu. Şehidimize Allah\'tan rahmet, ailesine ve milletimize başsağlığı diliyoruz Şehidimize Allah\'tan rahmet, ailesine başsağlığı.' }) } };
+  const m2 = await aiMetin(env2, h);
+  assert.equal(m2, `Askerimiz şehit oldu. ${BASSAGLIGI} #şehit`);
   const svg = kapakSvg({ ...h, kaynaklar: [] });
   assert.match(svg, /ACI HABER/);
   assert.match(svg, /#0b0b0c/);
@@ -215,4 +219,13 @@ test('SEO: Search Console etiketi, Open Graph ve NewsArticle', async () => {
   assert.match(html, /"@type":"NewsArticle"/);
   assert.doesNotMatch(html, /Başlık <\/script>/);
   assert.match(html, /"name":"TRT Haber"/);
+});
+
+test('tüm haberler listesi: gün başlıkları, kaynak ve etiket', async () => {
+  const { tumListe } = await import('../gundem-sitesi/src/sayfa.js');
+  const k = (id, zaman, ad, dil) => haberiCoz({ id, baslik: `Haber ${id}`, metin: 'm', kaynaklar: JSON.stringify([{ ad, url: 'https://x/' + id, ...(dil ? { dil } : {}) }]), kaynak_sayisi: 1, ilk_gorulme: zaman });
+  const html = tumListe([k(3, '2026-11-22T09:00:00Z', 'TRT Haber'), k(2, '2026-11-22T08:00:00Z', 'BBC News', 'en'), k(1, '2026-11-21T08:00:00Z', 'NTV')]);
+  assert.equal((html.match(/class="gun"/g) || []).length, 2);
+  assert.match(html, /href="\/haber\/2">Haber 2<\/a>.*BBC News · Dünya/s);
+  assert.match(tumListe([]), /Bu seçimde haber yok/);
 });

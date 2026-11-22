@@ -24,6 +24,8 @@ const CIKARMA_SISTEM = `Bir haber başlığı ve kısa metni verilecek. Yalnızc
 {"kisi": "<haberin ana konusu olan GERÇEK kişinin tam adı; yoksa boş>", "sahne": "<haberi anlatan genel bir sahnenin İngilizce kısa tarifi; tanınabilir gerçek kişi, logo, yazı olmasın>"}`;
 
 export function jsonAyikla(ham) {
+  // Workers AI JSON yanıtı bazen hazır nesne olarak döner
+  if (ham && typeof ham === 'object') return Array.isArray(ham) ? {} : ham;
   const m = String(ham || '').match(/\{[\s\S]*\}/);
   if (!m) return {};
   try { const j = JSON.parse(m[0]); return typeof j === 'object' && j ? j : {}; } catch { return {}; }
@@ -106,8 +108,9 @@ export async function gorselleriDoldur(env, rapor = {}) {
           messages: [{ role: 'system', content: CIKARMA_SISTEM }, { role: 'user', content: `Başlık: ${h.baslik}\nMetin: ${h.metin}` }],
           max_tokens: 120, temperature: 0.1,
         });
-        const j = jsonAyikla(typeof c === 'string' ? c : c?.response);
+        const j = jsonAyikla(typeof c === 'string' ? c : c?.response ?? c);
         const kisi = typeof j.kisi === 'string' ? j.kisi.trim() : '';
+        (rapor.kisiler ||= []).push(`${h.id}:${kisi || '-'}`);
         if (kisi) sonuc = await wikiFoto(kisi).catch((e) => { (rapor.hatalar ||= []).push(`Wikipedia ${h.id}: ${e.message || e}`); return null; });
         if (!sonuc && ai > 0) { ai--; sonuc = await aiGorsel(env, h.id, typeof j.sahne === 'string' ? j.sahne : '', h.baslik); }
         if (!sonuc) sonuc = { tur: 'bekle', url: null, atif: null };
