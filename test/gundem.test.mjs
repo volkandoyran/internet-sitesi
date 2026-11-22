@@ -163,6 +163,9 @@ test('şehit haberi: yaslı şablon, başsağlığı, koyu kapak, rozet', async 
   const m = await aiMetin(env, h);
   assert.ok(m.endsWith(`${BASSAGLIGI} #şehit`));
   assert.equal(m.split(BASSAGLIGI).length, 2);
+  const env2 = { AI: { run: async () => ({ response: 'Askerimiz şehit oldu. Şehidimize Allah\'tan rahmet, ailesine ve milletimize başsağlığı diliyoruz Şehidimize Allah\'tan rahmet, ailesine başsağlığı.' }) } };
+  const m2 = await aiMetin(env2, h);
+  assert.equal(m2, `Askerimiz şehit oldu. ${BASSAGLIGI} #şehit`);
   const svg = kapakSvg({ ...h, kaynaklar: [] });
   assert.match(svg, /ACI HABER/);
   assert.match(svg, /#0b0b0c/);

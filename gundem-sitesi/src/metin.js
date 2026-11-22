@@ -63,7 +63,7 @@ export async function aiMetin(env, { baslik, ozet }) {
   if (t.length < 30) throw new Error('model boş ya da çok kısa yanıt verdi');
   if (sehitMi({ baslik, ozet })) {
     // Başsağlığı cümlesi kesilmesin: gövde kırpılır, cümle sona eklenir
-    t = t.replace(BASSAGLIGI, '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim();
+    t = t.replace(/Şehidimize Allah'?[’']?tan rahmet[^.#]*\.?/gi, '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim();
     return `${kirp(t, GOVDE_SINIR - 10)} ${BASSAGLIGI} #şehit`;
   }
   return kirp(t, GOVDE_SINIR + 40);

@@ -108,6 +108,7 @@ export async function gorselleriDoldur(env, rapor = {}) {
         });
         const j = jsonAyikla(typeof c === 'string' ? c : c?.response);
         const kisi = typeof j.kisi === 'string' ? j.kisi.trim() : '';
+        (rapor.kisiler ||= []).push(`${h.id}:${kisi || '-'}`);
         if (kisi) sonuc = await wikiFoto(kisi).catch((e) => { (rapor.hatalar ||= []).push(`Wikipedia ${h.id}: ${e.message || e}`); return null; });
         if (!sonuc && ai > 0) { ai--; sonuc = await aiGorsel(env, h.id, typeof j.sahne === 'string' ? j.sahne : '', h.baslik); }
         if (!sonuc) sonuc = { tur: 'bekle', url: null, atif: null };
