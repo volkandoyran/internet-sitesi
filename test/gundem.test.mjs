@@ -219,3 +219,12 @@ test('SEO: Search Console etiketi, Open Graph ve NewsArticle', async () => {
   assert.doesNotMatch(html, /Başlık <\/script>/);
   assert.match(html, /"name":"TRT Haber"/);
 });
+
+test('tüm haberler listesi: gün başlıkları, kaynak ve etiket', async () => {
+  const { tumListe } = await import('../gundem-sitesi/src/sayfa.js');
+  const k = (id, zaman, ad, dil) => haberiCoz({ id, baslik: `Haber ${id}`, metin: 'm', kaynaklar: JSON.stringify([{ ad, url: 'https://x/' + id, ...(dil ? { dil } : {}) }]), kaynak_sayisi: 1, ilk_gorulme: zaman });
+  const html = tumListe([k(3, '2026-11-22T09:00:00Z', 'TRT Haber'), k(2, '2026-11-22T08:00:00Z', 'BBC News', 'en'), k(1, '2026-11-21T08:00:00Z', 'NTV')]);
+  assert.equal((html.match(/class="gun"/g) || []).length, 2);
+  assert.match(html, /href="\/haber\/2">Haber 2<\/a>.*BBC News · Dünya/s);
+  assert.match(tumListe([]), /Bu seçimde haber yok/);
+});

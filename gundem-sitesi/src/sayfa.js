@@ -45,7 +45,12 @@ h2.bolum{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(
 article.haber{background:var(--kart);border:1px solid var(--cizgi);border-radius:14px;padding:16px;margin-bottom:12px;display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start}
 .kapak img,.one img,.kapak-buyuk{display:block;width:100%;height:auto;aspect-ratio:1200/630;object-fit:cover;border-radius:10px;background:var(--cizgi)}
 .one img{margin-bottom:10px;border-radius:8px}.kapak-buyuk{border-radius:14px;object-fit:cover}.kapak-fig{margin:6px 0 16px}.kapak-fig figcaption{font-size:12px;color:var(--soluk);margin-top:6px}
-@media (max-width:600px){article.haber{grid-template-columns:1fr;gap:12px}}
+table.tum{width:100%;border-collapse:collapse;background:var(--kart);border:1px solid var(--cizgi);border-radius:14px;overflow:hidden;font-size:15px}
+table.tum td{padding:9px 12px;border-bottom:1px solid var(--cizgi);vertical-align:top}table.tum td.saat{color:var(--soluk);white-space:nowrap;font-size:13px;width:1%}
+table.tum td.k{color:var(--soluk);font-size:13px;white-space:nowrap;width:1%}table.tum a{text-decoration:none;font-weight:600}table.tum a:hover{text-decoration:underline}
+table.tum tr.gun td{background:var(--bg);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--vurgu)}
+.filtre{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px;align-items:center}.filtre a{font-size:13px;font-weight:600;text-decoration:none;padding:5px 12px;border:1px solid var(--cizgi);border-radius:999px;color:var(--soluk)}.filtre a.on{color:var(--yazi);border-color:var(--yazi)}.filtre span{color:var(--soluk);font-size:13px;margin-left:auto}
+@media (max-width:600px){table.tum td.k{display:none}article.haber{grid-template-columns:1fr;gap:12px}}
 article.haber h3{font:700 19px/1.3 Georgia,"Times New Roman",serif;margin:0 0 6px}article.haber h3 a{text-decoration:none}
 article.haber h3 a:hover{text-decoration:underline}
 .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--soluk);margin-bottom:8px}
@@ -75,7 +80,7 @@ ${kanonik ? `<link rel="canonical" href="${kac(kanonik)}">` : ''}
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c0261c'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='Georgia' font-weight='bold'%3EG%3C/text%3E%3C/svg%3E">
 <style>${STIL}</style></head><body>
 <header class="ust"><div class="kap"><a class="logo" href="/">${kac(ad.split(' ')[0])} <b>${kac(ad.split(' ').slice(1).join(' '))}</b></a><span class="tarih">${kac(bugun)}</span></div></header>
-<div class="kap"><nav>${sekme('/', 'Son haberler', 'son')}${sekme('/cok-konusulan', 'Çok konuşulanlar', 'cok')}${sekme('/hakkinda', 'Hakkında', 'hakkinda')}</nav>
+<div class="kap"><nav>${sekme('/', 'Son haberler', 'son')}${sekme('/cok-konusulan', 'Çok konuşulanlar', 'cok')}${sekme('/tum-haberler', 'Tüm haberler', 'tum')}${sekme('/hakkinda', 'Hakkında', 'hakkinda')}</nav>
 <main>${govde}</main>
 <footer>Özetler otomatik hazırlanır; haberlerin tamamı ve sorumluluğu ilgili kaynaklardadır. Her haberde haberin alındığı kaynak belirtilir. <a href="/rss.xml">RSS</a></footer></div>
 </body></html>`;
@@ -150,3 +155,19 @@ export function haberSemasi(env, kok, h, foto) {
   };
 }
 
+
+// Tüm haberler: güne göre gruplanmış sade liste
+export function tumListe(haberler) {
+  if (!haberler.length) return '<p class="bos">Bu seçimde haber yok.</p>';
+  const gunAdi = (iso) => new Date(iso).toLocaleDateString('tr-TR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' });
+  const saatAdi = (iso) => new Date(iso).toLocaleTimeString('tr-TR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+  let son = '';
+  const satirlar = haberler.map((h) => {
+    const gun = gunAdi(h.zaman);
+    const bas = gun !== son ? `<tr class="gun"><td colspan="3">${kac(gun)}</td></tr>` : '';
+    son = gun;
+    const etiket = sehitMi(h) ? ' · Acı haber' : h.yabanci ? ' · Dünya' : '';
+    return `${bas}<tr><td class="saat">${kac(saatAdi(h.zaman))}</td><td><a href="/haber/${h.id}">${kac(h.baslik)}</a></td><td class="k">${kac(h.kaynaklar[0]?.ad || '')}${kac(etiket)}</td></tr>`;
+  }).join('');
+  return `<table class="tum"><tbody>${satirlar}</tbody></table>`;
+}

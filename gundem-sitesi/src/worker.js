@@ -7,10 +7,10 @@ import { videoIstek } from './video.js';
 import { kapakSvg } from './kapak.js';
 import { gorselBilgi, gorselleriDoldur } from './gorsel.js';
 
-export const GORSEL_CRON = '5,15,25,35,45,55 * * * *';
+const GORSEL_CRON = '5,15,25,35,45,55 * * * *';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
-import { haberler, oneCikanlar, haber, sonHaberler } from './veri.js';
-import { haberSemasi, kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
+import { haberler, oneCikanlar, haber, sonHaberler, haberSayisi } from './veri.js';
+import { haberSemasi, tumListe, kabuk, liste, oneCikanBlok, aramaFormu, sayfalama, detayGovde, HAKKINDA, kac } from './sayfa.js';
 
 const sayfaNo = (url) => Math.max(1, Math.min(200, parseInt(url.searchParams.get('sayfa') || '1', 10) || 1));
 
@@ -86,6 +86,15 @@ export default {
       return kabuk(env, { baslik: 'Çok konuşulanlar', secili: 'cok', aciklama: 'Birden çok haber kaynağında yer alan gündem başlıkları.',
         govde: liste(l, { bosMesaj: 'Henüz birden çok kaynakta geçen haber yok.' }) + sayfalama('/cok-konusulan', sayfa, sonraki) });
     }
+    if (yol === '/tum-haberler') {
+      const sayfa = sayfaNo(url);
+      const bolge = ['turkiye', 'dunya'].includes(url.searchParams.get('bolge')) ? url.searchParams.get('bolge') : '';
+      const [{ liste: l, sonraki }, toplam] = await Promise.all([haberler(env, { sayfa, boy: 100, bolge }), haberSayisi(env)]);
+      const f = (k, ad) => `<a href="/tum-haberler${k ? `?bolge=${k}` : ''}" class="${bolge === k ? 'on' : ''}">${ad}</a>`;
+      const govde = `<div class="filtre">${f('', 'Hepsi')}${f('turkiye', 'Türkiye')}${f('dunya', 'Dünya')}<span>${toplam} haber</span></div>`
+        + tumListe(l) + sayfalama('/tum-haberler', sayfa, sonraki, bolge ? `&bolge=${bolge}` : '');
+      return kabuk(env, { baslik: 'Tüm haberler', secili: 'tum', aciklama: 'Sitedeki tüm haberlerin tarih sırasıyla listesi.', govde, kanonik: sayfa === 1 && !bolge ? `${kok}/tum-haberler` : undefined });
+    }
     // /gorsel/<id>: fotoğraf varsa onu (Commons'a yönlendirme ya da KV'deki yapay zekâ görseli), yoksa SVG kapak
     const kp = yol.match(/^\/(kapak|gorsel)\/(\d+)(?:\.svg|\.jpg)?$/);
     if (kp) {
@@ -124,7 +133,7 @@ export default {
     if (yol === '/robots.txt') return new Response(`User-agent: *\nAllow: /\nDisallow: /panel\nDisallow: /api/\nSitemap: ${kok}/sitemap.xml\n`, { headers: { 'content-type': 'text/plain' } });
     if (yol === '/sitemap.xml') {
       const l = await sonHaberler(env, 1000);
-      const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${kok}/</loc></url><url><loc>${kok}/cok-konusulan</loc></url><url><loc>${kok}/hakkinda</loc></url>`
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${kok}/</loc></url><url><loc>${kok}/cok-konusulan</loc></url><url><loc>${kok}/tum-haberler</loc></url><url><loc>${kok}/hakkinda</loc></url>`
         + l.map((h) => `<url><loc>${kok}/haber/${h.id}</loc><lastmod>${kac(h.zaman)}</lastmod></url>`).join('') + '</urlset>';
       return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=600' } });
     }
