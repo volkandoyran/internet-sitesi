@@ -12,7 +12,7 @@ const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Nu
 export const gorselAyarlari = (env) => ({
   limit: sayi(env.GORSEL_LIMIT, 9),        // görsel çalışması başına haber (ücretsiz planın 50 alt istek sınırına sığar)
   aiLimit: sayi(env.GORSEL_AI_LIMIT, 3),   // çalışma başına yapay zekâ görseli
-  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 100), // 24 saatte en fazla yapay zekâ görseli (hafif model ~50 nöron/adet, ücretsiz kotaya sığsın)
+  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 60), // 24 saatte en fazla yapay zekâ görseli (hafif model ~50 nöron/adet, ücretsiz kotaya sığsın)
   saklaGun: sayi(env.SAKLA_GUN, 7),
 });
 

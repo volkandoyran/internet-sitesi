@@ -237,3 +237,48 @@ test('gorselBayt: base64 ve akış yanıtlarını bayta çevirir', async () => {
   assert.equal(await gorselBayt({}), null);
   assert.equal(await gorselBayt(null), null);
 });
+
+import { sayfaMetni, icerikTemizle, icerikleriDoldur } from '../gundem-sitesi/src/makale.js';
+
+test('sayfaMetni: makale paragraflarını alır, gürültüyü atar', () => {
+  const html = `<html><head><meta property="og:description" content="Kısa açıklama"></head><body><nav><p>Menü bağlantıları burada uzun uzun yazıyor ama alınmamalı tamam mı</p></nav>
+  <article><h1>Başlık</h1><p>Malatya'da sabah saatlerinde 4,8 büyüklüğünde deprem meydana geldi ve çevre illerde de hissedildi.</p>
+  <p>AFAD'ın açıklamasına göre depremin derinliği 7 kilometre olarak ölçüldü, can kaybı ya da yıkım bildirilmedi.</p>
+  <p>Çerez politikamızı kabul ederek sitemizi kullanmaya devam edebilirsiniz, ayrıntılar için tıklayın.</p><p>Kısa</p>
+  <script>var x = "<p>gizli betik paragrafı burada da uzun bir metin var ama alınmamalı</p>";</script></article></body></html>`;
+  const m = sayfaMetni(html);
+  assert.match(m, /4,8 büyüklüğünde/);
+  assert.match(m, /7 kilometre/);
+  assert.doesNotMatch(m, /Çerez|Menü|betik|Kısa$/);
+});
+
+test('icerikTemizle: düşünme bloğunu, hashtag ve başlık satırlarını atar, paragrafları korur', () => {
+  const t = icerikTemizle('<think>plan</think>Başlık: Deprem\n\n**Malatya** sallandı. #deprem\n\nAFAD açıklama yaptı https://x.com');
+  assert.equal(t, 'Malatya sallandı.\n\nAFAD açıklama yaptı');
+});
+
+test('detayGovde: içerik varsa paragraflar halinde gösterir', () => {
+  const h = { id: 1, baslik: 'B', metin: 'Kısa metin #a', kaynaklar: [{ ad: 'TRT Haber', url: 'https://x' }], kaynak_sayisi: 1, zaman: '2026-11-22T00:00:00Z', icerik: 'Bir.\n\nİki <b>' };
+  const g = detayGovde(h);
+  assert.match(g, /<div class="icerik"><p>Bir\.<\/p><p>İki &lt;b&gt;<\/p><\/div>/);
+  assert.doesNotMatch(g, /class="ozet"/);
+});
+
+test('icerikleriDoldur: kaynak yoksa ve özet kısaysa uydurmaz, yok işaretler', async () => {
+  const yazilan = [];
+  const db = {
+    prepare: (sql) => ({
+      bind: (...a) => ({
+        all: async () => ({ results: [{ id: 7, baslik: 'Son depremler', ozet: 'kısa', kaynaklar: '[]' }] }),
+        run: async () => { yazilan.push(a); },
+        first: async () => ({ n: 0 }),
+      }),
+      first: async () => ({ n: 0 }),
+    }),
+  };
+  let aiCagri = 0;
+  const r = await icerikleriDoldur({ DB: db, AI: { run: async () => { aiCagri++; return { response: '' }; } } }, {});
+  assert.equal(aiCagri, 0);
+  assert.equal(r.yok, 1);
+  assert.deepEqual(yazilan[0].slice(0, 2), [7, 'yok']);
+});

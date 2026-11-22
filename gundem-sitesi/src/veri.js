@@ -49,7 +49,9 @@ export async function oneCikanlar(env, adet = 5) {
 
 export async function haber(env, id) {
   const r = await guvenli(() => env.DB.prepare(`SELECT ${ALANLAR} FROM haberler WHERE id = ? AND metin IS NOT NULL`).bind(id).first());
-  return r ? haberiCoz(r) : null;
+  if (!r) return null;
+  const i = await guvenli(() => env.DB.prepare("SELECT metin FROM icerikler WHERE haber_id = ? AND tur = 'ai'").bind(id).first());
+  return { ...haberiCoz(r), icerik: i?.metin || '' };
 }
 
 export async function sonHaberler(env, adet) {

@@ -6,6 +6,7 @@ import { topla } from './bot.js';
 import { videoIstek } from './video.js';
 import { kapakSvg } from './kapak.js';
 import { gorselBilgi, gorselleriDoldur } from './gorsel.js';
+import { icerikleriDoldur } from './makale.js';
 
 const GORSEL_CRON = '5,15,25,35,45,55 * * * *';
 import { listeSayfasi, kaynakSayfasi } from './panel.js';
@@ -42,8 +43,10 @@ export default {
   async scheduled(event, env) {
     await semaKur(env);
     // Görseller ayrı zamanlayıcıda çalışır (her çalışmanın kendi 50 alt istek hakkı olsun)
+    // 15, 35 ve 55. dakikalarda haber içerikleri, diğerlerinde görseller
     if (event.cron === GORSEL_CRON) {
-      console.log(JSON.stringify({ gorsel: await gorselleriDoldur(env, {}) }));
+      if (new Date(event.scheduledTime).getUTCMinutes() % 20 === 15) console.log(JSON.stringify({ icerik: await icerikleriDoldur(env, {}) }));
+      else console.log(JSON.stringify({ gorsel: await gorselleriDoldur(env, {}) }));
       return;
     }
     const r = await topla(env, event.scheduledTime);

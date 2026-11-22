@@ -60,7 +60,7 @@ p.ozet{margin:0 0 8px}.etiket{font-size:13px;color:var(--soluk);margin-right:6px
 .sayfala{display:flex;justify-content:space-between;margin:20px 0}
 .bos{text-align:center;color:var(--soluk);padding:60px 0}
 .detay h1{font:800 clamp(24px,5vw,34px)/1.2 Georgia,"Times New Roman",serif;margin:18px 0 10px}
-.detay .ozet{font-size:18px}.detay ul{padding-left:20px}.detay li{margin:6px 0}
+.detay .ozet{font-size:18px}.detay .icerik p{font-size:18px;line-height:1.65;margin:0 0 14px}.detay ul{padding-left:20px}.detay li{margin:6px 0}
 footer{border-top:1px solid var(--cizgi);margin-top:30px;padding:18px 0 40px;font-size:13px;color:var(--soluk)}`;
 
 export function kabuk(env, { baslik, aciklama, secili = '', govde, kanonik, gorsel, makale, durum = 200 }) {
@@ -130,7 +130,7 @@ export function detayGovde(h, atif = null) {
   const { govde, etiketler } = metniAyir(h.metin);
   return `<div class="detay"><div class="meta"><time datetime="${kac(h.zaman)}">${kac(tamTarih(h.zaman))}</time>
 ${h.kaynak_sayisi > 1 ? `<span class="rozet">${h.kaynak_sayisi} kaynakta</span>` : ''}${h.yabanci ? '<span class="rozet ceviri">Yabancı basından çeviri</span>' : ''}${sehitMi(h) ? '<span class="rozet yas">Acı haber</span>' : ''}</div>
-<h1>${kac(h.baslik)}</h1><figure class="kapak-fig"><img class="kapak-buyuk" src="/gorsel/${h.id}" alt="${kac(h.baslik)}" width="1200" height="630">${atif ? `<figcaption>${kac(atif)}</figcaption>` : ''}</figure>${govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
+<h1>${kac(h.baslik)}</h1><figure class="kapak-fig"><img class="kapak-buyuk" src="/gorsel/${h.id}" alt="${kac(h.baslik)}" width="1200" height="630">${atif ? `<figcaption>${kac(atif)}</figcaption>` : ''}</figure>${h.icerik ? `<div class="icerik">${h.icerik.split(/\n\s*\n/).map((p) => `<p>${kac(p)}</p>`).join('')}</div>` : govde ? `<p class="ozet">${kac(govde)}</p>` : ''}
 ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)}</span>`).join('')}</div>` : ''}
 <h2 class="bolum">Kaynak</h2>
 <ul>${h.kaynaklar.map((k) => `<li>${kac(k.ad)}${k.dil ? ' (Türkçe çeviri)' : ''}</li>`).join('')}</ul>
@@ -139,7 +139,7 @@ ${etiketler.length ? `<div>${etiketler.map((e) => `<span class="etiket">${kac(e)
 
 export const HAKKINDA = `<div class="detay"><h1>Hakkında</h1>
 <p>Bu site Türkiye ve dünya gündemindeki haberleri tek yerde, kısa ve tarafsız özetlerle sunar. Haberler, haber sitelerinin herkese açık RSS akışlarından otomatik olarak toplanır; aynı olayı veren haberler birleştirilir ve kaç kaynakta geçtiği gösterilir. Yabancı basındaki önemli haberler Türkçeye çevrilerek eklenir.</p>
-<p>Özetler ve çeviriler yapay zekâ ya da şablonla, yalnızca haberin başlığı ve kısa açıklamasından yazılır. Haber metinleri ve görseller kopyalanmaz; her haberde haberin alındığı kaynak belirtilir.</p>
+<p>Haber metinleri ve çeviriler, kaynak haberdeki bilgilerden yapay zekâ ile kendi cümlelerimizle yeniden yazılır; metne kaynakta olmayan bilgi eklenmez. Kaynak haberlerin metinleri ve fotoğrafları kopyalanmaz; her haberde haberin alındığı kaynak belirtilir.</p>
 <p>Bir haberle ilgili düzeltme ya da kaldırma isteğiniz varsa lütfen ilgili kaynağa ve bize bildirin.</p></div>`;
 
 // Google için haber yapısal verisi (NewsArticle)
@@ -147,6 +147,7 @@ export function haberSemasi(env, kok, h, foto) {
   return {
     '@context': 'https://schema.org', '@type': 'NewsArticle',
     headline: h.baslik.slice(0, 110), description: h.metin, inLanguage: 'tr',
+    ...(h.icerik ? { articleBody: h.icerik } : {}),
     datePublished: h.zaman, dateModified: h.zaman, mainEntityOfPage: `${kok}/haber/${h.id}`,
     ...(foto ? { image: [`${kok}/gorsel/${h.id}.jpg`] } : {}),
     author: { '@type': 'Organization', name: env.SITE_ADI || 'Gündem Özeti', url: `${kok}/` },

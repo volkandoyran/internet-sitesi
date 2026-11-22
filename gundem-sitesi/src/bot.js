@@ -154,6 +154,7 @@ export async function topla(env, simdi = Date.now()) {
     env.DB.prepare('DELETE FROM paylasimlar WHERE haber_id IN (SELECT id FROM haberler WHERE ilk_gorulme < ?)').bind(sinir),
     env.DB.prepare('DELETE FROM haberler WHERE ilk_gorulme < ?').bind(sinir),
     env.DB.prepare('DELETE FROM gorseller WHERE haber_id NOT IN (SELECT id FROM haberler)'),
+    env.DB.prepare('DELETE FROM icerikler WHERE haber_id NOT IN (SELECT id FROM haberler)'),
     env.DB.prepare('DELETE FROM gorulen WHERE zaman < ?').bind(sinir),
   ]);
   return rapor;
