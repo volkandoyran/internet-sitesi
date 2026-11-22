@@ -11,13 +11,16 @@ const SAAT = 3600e3;
 const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
 export const gorselAyarlari = (env) => ({
   limit: sayi(env.GORSEL_LIMIT, 9),        // görsel çalışması başına haber (ücretsiz planın 50 alt istek sınırına sığar)
-  aiLimit: sayi(env.GORSEL_AI_LIMIT, 2),   // çalışma başına yapay zekâ görseli
-  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 40), // 24 saatte en fazla yapay zekâ görseli (~50 nöron/adet, ücretsiz kotaya sığsın)
+  aiLimit: sayi(env.GORSEL_AI_LIMIT, 3),   // çalışma başına yapay zekâ görseli
+  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 100), // 24 saatte en fazla yapay zekâ görseli (hafif model ~50 nöron/adet, ücretsiz kotaya sığsın)
   saklaGun: sayi(env.SAKLA_GUN, 7),
 });
 
 export const CIKARMA_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
-export const GORSEL_MODEL = '@cf/black-forest-labs/flux-1-schnell';
+// Hafif model: 768x432 (2 karo) ≈ 52 nöron; eski flux-1-schnell 1024x1024 ≈ 170 nörondu.
+export const GORSEL_MODEL = '@cf/black-forest-labs/flux-2-klein-4b';
+export const YEDEK_GORSEL_MODEL = '@cf/black-forest-labs/flux-1-schnell';
+export const GORSEL_EN = 768, GORSEL_BOY = 432;
 const UA = { 'user-agent': 'GundemOzeti/1.0 (haber sitesi; Wikimedia API)' };
 
 const CIKARMA_SISTEM = `Bir haber başlığı ve kısa metni verilecek. Yalnızca JSON yaz, başka hiçbir şey yazma:
@@ -78,11 +81,33 @@ function base64Bayt(b64) {
   return u;
 }
 
+// Model yanıtı: { image: base64 } ya da doğrudan bayt akışı
+export async function gorselBayt(r) {
+  if (!r) return null;
+  if (typeof r.image === 'string' && r.image) return base64Bayt(r.image);
+  if (r instanceof ReadableStream) { const b = new Uint8Array(await new Response(r).arrayBuffer()); return b.length ? b : null; }
+  if (r instanceof ArrayBuffer || ArrayBuffer.isView(r)) { const b = new Uint8Array(r.buffer || r); return b.length ? b : null; }
+  return null;
+}
+
 export async function aiGorsel(env, id, sahne, baslik) {
   const istem = `Editorial news photo illustration: ${sahne || baslik}. Realistic, natural light, wide shot, no text, no captions, no logos, no recognizable real people.`;
-  const r = await env.AI.run(GORSEL_MODEL, { prompt: istem.slice(0, 900), steps: 4 });
-  if (!r?.image) throw new Error('görsel modeli boş yanıt verdi');
-  await env.GORSEL.put(`g/${id}.jpg`, base64Bayt(r.image), { expirationTtl: gorselAyarlari(env).saklaGun * 24 * 3600 + 86400, metadata: { tur: 'image/jpeg' } });
+  const prompt = istem.slice(0, 900);
+  let bayt;
+  try {
+    const form = new FormData();
+    form.append('prompt', prompt);
+    form.append('width', String(GORSEL_EN));
+    form.append('height', String(GORSEL_BOY));
+    const govde = new Response(form);
+    const r = await env.AI.run(GORSEL_MODEL, { multipart: { body: govde.body, contentType: govde.headers.get('content-type') } });
+    bayt = await gorselBayt(r);
+  } catch (e) {
+    console.log(JSON.stringify({ olay: 'gorsel-model-yedek', hata: String(e?.message || e).slice(0, 200) }));
+  }
+  if (!bayt) bayt = await gorselBayt(await env.AI.run(YEDEK_GORSEL_MODEL, { prompt, steps: 2 }));
+  if (!bayt) throw new Error('görsel modeli boş yanıt verdi');
+  await env.GORSEL.put(`g/${id}.jpg`, bayt, { expirationTtl: gorselAyarlari(env).saklaGun * 24 * 3600 + 86400, metadata: { tur: 'image/jpeg' } });
   return { tur: 'ai', url: null, atif: 'Yapay zekâ ile üretilmiş temsili görsel' };
 }
 
