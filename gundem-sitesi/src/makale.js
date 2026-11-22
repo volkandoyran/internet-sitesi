@@ -74,8 +74,9 @@ export async function icerikYaz(env, h, kaynak) {
       { role: 'system', content: SISTEM + (h.yabanci ? YABANCI_EK : '') + (sehit ? YAS_EK : '') },
       { role: 'user', content: `Başlık: ${h.baslik}\nÖzet: ${(h.ozet || '').slice(0, 600)}\n\nKaynak haber metni:\n${kaynak}` },
     ],
-    max_tokens: 1500,
+    max_tokens: 1000,
     temperature: 0.3,
+    chat_template_kwargs: { enable_thinking: false }, // düşünme kapalı: tüm çıktı metne gitsin, nöron harcanmasın
   });
   const ham = typeof r === 'string' ? r : r?.response ?? r?.choices?.[0]?.message?.content ?? '';
   let t = icerikTemizle(ham);
@@ -89,13 +90,14 @@ export async function icerikYaz(env, h, kaynak) {
 export async function icerikleriDoldur(env, rapor = {}) {
   if (!env.AI) return rapor;
   const a = icerikAyarlari(env);
-  const gunluk = (await env.DB.prepare(`SELECT count(*) n FROM icerikler WHERE tur = 'ai' AND zaman > strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')`).first())?.n || 0;
+  const gunluk = (await env.DB.prepare(`SELECT count(*) n FROM icerikler WHERE tur IN ('ai', 'hata') AND zaman > strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')`).first())?.n || 0;
   const hak = Math.max(0, Math.min(a.limit, a.gunluk - gunluk));
   rapor.hak = hak;
   if (!hak) return rapor;
   const { results } = await env.DB.prepare(`SELECT h.id, h.baslik, h.ozet, h.kaynaklar FROM haberler h
     LEFT JOIN icerikler i ON i.haber_id = h.id
-    WHERE h.metin IS NOT NULL AND i.haber_id IS NULL AND h.ilk_gorulme > strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 days')
+    WHERE h.metin IS NOT NULL AND (i.haber_id IS NULL OR (i.tur = 'hata' AND i.zaman < strftime('%Y-%m-%dT%H:%M:%fZ','now','-6 hours')))
+      AND h.ilk_gorulme > strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 days')
     ORDER BY h.kaynak_sayisi DESC, h.ilk_gorulme DESC LIMIT ?`).bind(hak).all();
   const say = (k) => { rapor[k] = (rapor[k] || 0) + 1; };
   for (const satir of results) {
@@ -113,7 +115,13 @@ export async function icerikleriDoldur(env, rapor = {}) {
     let tur = 'yok', metin = null;
     if (kaynak) {
       try { metin = await icerikYaz(env, h, kaynak); tur = 'ai'; }
-      catch (e) { say('hata'); rapor.sonHata = String(e?.message || e).slice(0, 200); continue; } // geçici hata: sonra tekrar
+      catch (e) {
+        // Hata da günlük sınırdan sayılır ve 6 saat sonra yeniden denenir; üst üste 2 hatada çalışma durur (nöron israfı olmasın)
+        say('hata'); rapor.sonHata = String(e?.message || e).slice(0, 200);
+        await env.DB.prepare("INSERT OR REPLACE INTO icerikler (haber_id, tur, metin, kaynak_uzunluk) VALUES (?, 'hata', NULL, ?)").bind(h.id, kaynak.length).run();
+        if (rapor.hata >= 2) break;
+        continue;
+      }
     }
     await env.DB.prepare('INSERT OR REPLACE INTO icerikler (haber_id, tur, metin, kaynak_uzunluk) VALUES (?, ?, ?, ?)')
       .bind(h.id, tur, metin, kaynak.length).run();

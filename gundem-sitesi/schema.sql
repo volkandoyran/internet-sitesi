@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS gorseller (
 );
 
 -- Haber içeriği: kaynak haberden yapay zekâyla yeniden yazılmış 3-5 paragraflık metin
--- tur: 'ai' (metin yazıldı) | 'yok' (kaynak okunamadı, bilgi yetersiz; uydurma metin yazılmaz)
+-- tur: 'ai' (metin yazıldı) | 'hata' (6 saat sonra yeniden denenir) | 'yok' (kaynak okunamadı, bilgi yetersiz; uydurma metin yazılmaz)
 CREATE TABLE IF NOT EXISTS icerikler (
   haber_id       INTEGER PRIMARY KEY,
   tur            TEXT NOT NULL,
