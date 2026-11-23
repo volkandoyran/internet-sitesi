@@ -10,7 +10,7 @@ export const ICERIK_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
 export const icerikAyarlari = (env) => ({
   limit: sayi(env.ICERIK_LIMIT, 5),       // çalışma başına haber
-  gunluk: sayi(env.ICERIK_GUNLUK, 100),   // 24 saatte en fazla yapay zekâ metni (~25 nöron/adet)
+  gunluk: sayi(env.ICERIK_GUNLUK, 250),   // 24 saatte en fazla yapay zekâ metni (ölçüm: ~10 nöron/adet)
   kaynakSiniri: 3500,                     // kaynak başına modele verilecek en fazla karakter
 });
 
