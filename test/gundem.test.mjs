@@ -179,8 +179,8 @@ test('görsel çalışması: wiki, yapay zekâ, bekle ve şehit ayrımı; günl�
   const yazilan = [];
   const haberlerListe = [
     { id: 1, baslik: 'Macron Paris’te açıklama yaptı', metin: 'x' },
-    { id: 2, baslik: 'İstanbul’da sağanak', metin: 'x' },
-    { id: 3, baslik: 'Trafik yoğunluğu', metin: 'x' },
+    { id: 2, baslik: 'İstanbul’da sağanak', metin: 'x', ilk_gorulme: new Date().toISOString() },
+    { id: 3, baslik: 'Trafik yoğunluğu', metin: 'x', ilk_gorulme: '2026-01-01T00:00:00Z' },
     { id: 4, baslik: '2 asker şehit oldu', metin: 'x' },
   ];
   const env = {
@@ -204,8 +204,8 @@ test('görsel çalışması: wiki, yapay zekâ, bekle ve şehit ayrımı; günl�
       return { response: b.messages[1].content.includes('Macron') ? '{"kisi":"Emmanuel Macron","sahne":"x"}' : '{"kisi":"","sahne":"rain"}' };
     };
     const r = await gorselleriDoldur(env, {});
-    // 1: Wikipedia ağ hatası → AI görseli; 2-3: AI hakkı bitti → bekle; 4: şehit → yok
-    assert.deepEqual(yazilan.map((x) => [x[0], x[1]]), [[1, 'ai'], [2, 'bekle'], [3, 'bekle'], [4, 'yok']]);
+    // 1: Wikipedia ağ hatası → AI görseli; 2: AI hakkı bitti, yeni haber → bekle; 3: eski haber → yok (kapak); 4: şehit → yok
+    assert.deepEqual(yazilan.map((x) => [x[0], x[1]]), [[1, 'ai'], [2, 'bekle'], [3, 'yok'], [4, 'yok']]);
     assert.equal(r.hatalar.length, 1);
   } finally { globalThis.fetch = eski; }
 });
