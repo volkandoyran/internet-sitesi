@@ -1,11 +1,12 @@
 // API. env.DB = D1, env.ADMIN_PASSWORD = gizli anahtar.
 import { cpuScore, gpuScore, parseQuery, distance } from '../lib/specs.js';
 import { cleanSpecs } from '../lib/pcspecs.js';
+import { adminMi, ayniKaynak, esit, kilitli, yanlisDeneme, dogruDeneme, oturumAc, oturumKapat, hataKaydi } from './guvenlik.js';
 
-const json = (data, status = 200) =>
+const json = (data, status = 200, extra = {}) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extra },
   });
 const fail = (msg, status = 400) => json({ error: msg }, status);
 
@@ -18,7 +19,15 @@ export async function handleApi(request, env, parts) {
   const method = request.method;
   try {
     if (parts[0] === 'admin') {
-      if (!(await isAdmin(request, env))) return fail('Yetkisiz. Admin şifresini kontrol edin.', 401);
+      if (parts[1] === 'login' && method === 'POST') return await adminLogin(request, env, url);
+      if (parts[1] === 'logout' && method === 'POST') {
+        if (!ayniKaynak(request, url)) return fail('İstek reddedildi.', 403);
+        return json({ ok: true }, 200, { 'set-cookie': await oturumKapat(env, request) });
+      }
+      const yetki = await adminMi(request, env);
+      if (!yetki.ok) return fail('Yetkisiz. Admin girişi gerekli.', 401);
+      // Panel çerezle gelir: değiştirici istekler yalnızca sitenin kendi sayfasından (CSRF koruması)
+      if (yetki.via === 'cookie' && !ayniKaynak(request, url)) return fail('İstek reddedildi.', 403);
       return await admin(parts.slice(1), method, request, env, url);
     }
     if (method !== 'GET') return fail('Desteklenmeyen istek', 405);
@@ -28,21 +37,33 @@ export async function handleApi(request, env, parts) {
     if (parts[0] === 'ads') return json({ ...(await ads(env)), rate_TRY: await rateFor(env, 'TRY') });
     return fail('Bulunamadı', 404);
   } catch (e) {
-    return fail('Sunucu hatası: ' + e.message, 500);
+    if (e instanceof Gecersiz) return fail(e.message, e.status);
+    // Teknik ayrıntı (SQL, yığın) yalnızca Worker günlüğüne; kullanıcıya genel mesaj ve takip kodu
+    const id = hataKaydi(e, request, 'api');
+    return json({ error: `Sunucu hatası oluştu. Takip kodu: ${id}`, hata_id: id }, 500);
   }
 }
 
-// Şifre karşılaştırması: iki değer de SHA-256 ile sabit boyuta getirilip zamanlamadan bağımsız karşılaştırılır
-async function isAdmin(request, env) {
-  const pw = env.ADMIN_PASSWORD;
-  if (!pw) return false;
-  const got = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  const enc = new TextEncoder();
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(got)),
-    crypto.subtle.digest('SHA-256', enc.encode(pw)),
-  ]);
-  return crypto.subtle.timingSafeEqual(a, b);
+// Doğrulama hatası: kullanıcıya gösterilecek açıklamayla 400/404/409 döner
+export class Gecersiz extends Error {
+  constructor(msg, status = 400) { super(msg); this.status = status; }
+}
+
+// Admin girişi: şifre yalnızca burada bir kez doğrulanır; tarayıcıya HttpOnly oturum çerezi verilir
+async function adminLogin(request, env, url) {
+  if (!ayniKaynak(request, url)) return fail('İstek reddedildi.', 403);
+  if (!env.ADMIN_PASSWORD) return fail('Admin şifresi ayarlanmamış.', 503);
+  const bekle = await kilitli(env, request, 'admin');
+  if (bekle) return json({ error: `Çok sayıda yanlış deneme. ${Math.ceil(bekle / 60)} dakika sonra tekrar deneyin.` }, 429, { 'retry-after': String(bekle) });
+  const body = await request.json().catch(() => ({}));
+  const pw = typeof body.password === 'string' ? body.password.trim() : '';
+  if (!pw || !(await esit(pw, env.ADMIN_PASSWORD.trim()))) {
+    await yanlisDeneme(env, request, 'admin');
+    await new Promise((r) => setTimeout(r, 800));
+    return fail('Admin şifresi yanlış.', 401);
+  }
+  await dogruDeneme(env, request, 'admin');
+  return json({ ok: true }, 200, { 'set-cookie': await oturumAc(env) });
 }
 
 const retailers = async (env) =>
@@ -208,26 +229,95 @@ export async function rateFor(env, currency) {
 function cleanProduct(body) {
   const p = {};
   for (const f of PRODUCT_FIELDS) if (f in body) p[f] = body[f] === '' ? null : body[f];
-  for (const f of ['cpu_score', 'gpu_score', 'ram_gb', 'storage_gb']) if (p[f] != null) p[f] = Math.round(+p[f]);
-  if (p.screen_in != null) p.screen_in = +p.screen_in;
+  // Sayı olmayan değer (NaN, Infinity) veritabanına yazılmaz
+  const num = (v) => (v != null && Number.isFinite(+v) ? +v : null);
+  for (const f of ['cpu_score', 'gpu_score', 'ram_gb', 'storage_gb']) if (p[f] != null) p[f] = num(p[f]) == null ? null : Math.round(num(p[f]));
+  if (p.screen_in != null) p.screen_in = num(p.screen_in);
   if (p.cpu && p.cpu_score == null) p.cpu_score = cpuScore(p.cpu);
   if (p.gpu && p.gpu_score == null) p.gpu_score = gpuScore(p.gpu);
   return p;
 }
 
+// ---------- Admin girdi doğrulaması ----------
+const TYPES = ['laptop', 'desktop', 'phone', 'tablet', 'part'];
+const CATEGORIES = ['laptop-batarya', 'laptop-adaptor', 'laptop-ekran', 'laptop-klavye', 'laptop-fan', 'cpu', 'gpu', 'ram', 'ssd', 'hdd', 'anakart', 'psu', 'kasa', 'monitor'];
+export const CURRENCIES = ['EUR', 'TRY'];
+const MAX_PRICE = 1e7;
+// Tarayıcıdan gelen fiyat ve kur: sonlu, pozitif, makul sınırda (NaN/Infinity/negatif yazılmaz)
+const okPrice = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < MAX_PRICE;
+const okRate = (cur, v) => CURRENCIES.includes(cur) && cur !== 'EUR' && Number.isFinite(+v) && +v > 0 && +v < 1e4;
+
+// http(s) adresi; kullanıcı adı/şifre içeren, boşluklu ya da çok uzun adres kabul edilmez
+export function guvenliUrl(v, ad = 'Bağlantı') {
+  if (v == null || v === '') return null;
+  if (typeof v !== 'string' || v.length > 2000 || /\s/.test(v.trim())) throw new Gecersiz(`${ad} geçerli bir adres değil.`);
+  let u;
+  try { u = new URL(v.trim()); } catch { throw new Gecersiz(`${ad} geçerli bir adres değil.`); }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || !u.hostname.includes('.')) throw new Gecersiz(`${ad} http:// ya da https:// ile başlayan bir site adresi olmalı.`);
+  return v.trim(); // olduğu gibi saklanır: tarayıcının bulduğu adresle birebir karşılaştırılabilsin
+}
+
+// Pozitif tam sayı kimlik (ürün, teklif)
+export function kimlik(v, ad = 'Kayıt') {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? +v : NaN;
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Gecersiz(`${ad} kimliği geçersiz.`);
+  return n;
+}
+
+// Fiyat: boş -> null; aksi halde sonlu, 0'dan büyük ve makul sınırın altında olmalı
+export function fiyat(v) {
+  if (v === '' || v == null) return null;
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\s*\d+([.,]\d+)?\s*$/.test(v) ? +v.replace(',', '.') : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n >= MAX_PRICE) throw new Gecersiz('Fiyat 0\'dan büyük geçerli bir sayı olmalı.');
+  return Math.round(n * 100) / 100;
+}
+
+export function urunGirdisi(body, yeni) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Gecersiz('Geçersiz istek.');
+  const p = {};
+  for (const f of PRODUCT_FIELDS) {
+    if (!(f in body)) continue;
+    let v = body[f];
+    if (v === '' || v == null) { p[f] = null; continue; }
+    if (['name', 'brand', 'cpu', 'gpu'].includes(f)) {
+      if (typeof v !== 'string') throw new Gecersiz(`${f} metin olmalı.`);
+      v = v.replace(/\s+/g, ' ').trim().slice(0, f === 'name' ? 300 : 80);
+    } else if (f === 'type') {
+      if (!TYPES.includes(v)) throw new Gecersiz('Ürün türü geçersiz.');
+    } else if (f === 'category') {
+      if (!CATEGORIES.includes(v)) throw new Gecersiz('Parça kategorisi geçersiz. Geçerli: ' + CATEGORIES.join(', '));
+    } else if (f === 'image') {
+      v = guvenliUrl(v, 'Görsel bağlantısı');
+    } else {
+      const n = +v;
+      const max = { cpu_score: 100, gpu_score: 100, ram_gb: 4096, storage_gb: 100000, screen_in: 100 }[f];
+      if (typeof v === 'boolean' || !Number.isFinite(n) || n < 0 || n > max) throw new Gecersiz(`${f} 0 ile ${max} arasında bir sayı olmalı.`);
+      v = n;
+    }
+    p[f] = v;
+  }
+  if (yeni && (!p.name || !p.type)) throw new Gecersiz('Ürün adı ve türü zorunlu.');
+  if (!yeni && 'name' in p && !p.name) throw new Gecersiz('Ürün adı boş olamaz.');
+  if (!yeni && 'type' in p && !p.type) throw new Gecersiz('Ürün türü boş olamaz.');
+  return cleanProduct(p);
+}
+
 async function admin(parts, method, request, env, url) {
-  const body = ['POST', 'PUT'].includes(method) ? await request.json().catch(() => ({})) : null;
+  let body = ['POST', 'PUT'].includes(method) ? await request.json().catch(() => ({})) : null;
+  if (body !== null && (typeof body !== 'object' || Array.isArray(body))) body = {};
   if (method !== 'GET') clearProductCache(); // panelden yapılan değişiklik hemen görünsün
-  const [res, id] = [parts[0], parts[1] ? +parts[1] : null];
+  const res = parts[0];
+  // Kimlik isteyen işlemlerde (güncelleme, silme, geçmiş) adres sonundaki kimlik doğrulanır
+  const needsId = ['PUT', 'DELETE'].includes(method) && ['products', 'offers'].includes(res) || res === 'history';
+  const id = needsId ? kimlik(parts[1]) : parts[1] && /^\d+$/.test(parts[1]) ? +parts[1] : null;
 
   if (res === 'check') return json({ ok: true });
 
   if (res === 'products') {
     if (method === 'GET') return json(await loadAllAdmin(env));
     if (method === 'POST' || method === 'PUT') {
-      const p = cleanProduct(body);
+      const p = urunGirdisi(body, method === 'POST');
       if (method === 'POST') {
-        if (!p.name || !p.type) return fail('Ürün adı ve türü zorunlu.');
         const keys = Object.keys(p);
         const r = await env.DB.prepare(
           `INSERT INTO products (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')}) RETURNING id`
@@ -236,16 +326,18 @@ async function admin(parts, method, request, env, url) {
       }
       const keys = Object.keys(p);
       if (!keys.length) return fail('Değişiklik yok.');
-      await env.DB.prepare(`UPDATE products SET ${keys.map((k) => k + ' = ?').join(', ')} WHERE id = ?`)
+      const r = await env.DB.prepare(`UPDATE products SET ${keys.map((k) => k + ' = ?').join(', ')} WHERE id = ?`)
         .bind(...keys.map((k) => p[k]), id).run();
+      if (!r.meta?.changes) return fail('Ürün bulunamadı.', 404);
       return json({ ok: true });
     }
     if (method === 'DELETE') {
-      await env.DB.batch([
+      const r = await env.DB.batch([
         env.DB.prepare('DELETE FROM price_history WHERE offer_id IN (SELECT id FROM offers WHERE product_id = ?)').bind(id),
         env.DB.prepare('DELETE FROM offers WHERE product_id = ?').bind(id),
         env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id),
       ]);
+      if (!r[2].meta?.changes) return fail('Ürün bulunamadı.', 404);
       return json({ ok: true });
     }
   }
@@ -260,36 +352,57 @@ async function admin(parts, method, request, env, url) {
       return json(rows);
     }
     if (method === 'POST' || method === 'PUT') {
-      if (body.url && !/^https?:\/\//i.test(body.url)) return fail('Ürün bağlantısı http:// ya da https:// ile başlamalı.');
-      const r = await env.DB.prepare('SELECT currency FROM retailers WHERE id = ?').bind(body.retailer_id).first();
-      if (method === 'POST' && !r) return fail('Satıcı bulunamadı.');
-      const currency = body.currency || (r && r.currency) || 'EUR';
-      const price = body.price === '' || body.price == null ? null : +body.price;
+      if (!body || typeof body !== 'object') throw new Gecersiz('Geçersiz istek.');
+      const offerUrl = guvenliUrl(body.url, 'Ürün bağlantısı');
+      const price = fiyat(body.price);
+      const manual = body.manual ? 1 : 0;
+      if (manual && price == null) throw new Gecersiz('Elle girilen teklif için fiyat zorunlu.');
+      // Yeni teklif: ürün ve mağaza var olmalı. Güncelleme: teklif var olmalı (mağaza ve ürün değiştirilemez).
+      let retailerId, productId, prev = null;
+      if (method === 'POST') {
+        productId = kimlik(body.product_id, 'Ürün');
+        retailerId = typeof body.retailer_id === 'string' ? body.retailer_id : '';
+        if (!(await env.DB.prepare('SELECT 1 FROM products WHERE id = ?').bind(productId).first())) return fail('Ürün bulunamadı.', 404);
+      } else {
+        prev = await env.DB.prepare('SELECT id, retailer_id, product_id, price, currency FROM offers WHERE id = ?').bind(id).first();
+        if (!prev) return fail('Teklif bulunamadı.', 404);
+        retailerId = prev.retailer_id; productId = prev.product_id;
+      }
+      const r = await env.DB.prepare('SELECT currency FROM retailers WHERE id = ?').bind(retailerId).first();
+      if (!r) return fail('Satıcı bulunamadı.', 404);
+      const currency = body.currency || r.currency || 'EUR';
+      if (!CURRENCIES.includes(currency)) throw new Gecersiz('Para birimi geçersiz. Geçerli: ' + CURRENCIES.join(', '));
+      // Aynı mağazada aynı ürün bağlantısı ikinci kez eklenmez
+      if (offerUrl) {
+        const dup = await env.DB.prepare('SELECT id FROM offers WHERE retailer_id = ? AND url = ? AND id != ?').bind(retailerId, offerUrl, prev ? prev.id : 0).first();
+        if (dup) return fail('Bu mağaza bağlantısı zaten kayıtlı.', 409);
+      }
       const rate = await rateFor(env, currency);
       if (price != null && rate == null) return fail(`${currency} kuru henüz yok. Önce fiyat çekiciyi bir kez çalıştırın.`);
       const priceEur = price != null ? Math.round((price / rate) * 100) / 100 : null;
-      const manual = body.manual ? 1 : 0;
+      const inStock = body.in_stock === false ? 0 : 1;
       const now = new Date().toISOString();
       if (method === 'POST') {
         const row = await env.DB.prepare(
-          `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?) RETURNING id`
-        ).bind(body.product_id, body.retailer_id, body.url || null, price, currency, priceEur,
-          body.in_stock === false ? 0 : 1, manual, price != null ? now : null).first();
-        if (priceEur != null) await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?,?)').bind(row.id, priceEur).run();
+          `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at, checked_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id`
+        ).bind(productId, retailerId, offerUrl, price, currency, priceEur, inStock, manual, price != null ? now : null, price != null ? now : null).first();
+        if (priceEur != null) await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?,?,?,?)').bind(row.id, priceEur, price, currency).run();
         return json({ id: row.id });
       }
+      // Fiyat silinirse son bilinen fiyat geçmişte kalır; geçmişe yalnızca fiyat değişince satır eklenir
       await env.DB.prepare(
-        `UPDATE offers SET url = ?, price = ?, currency = ?, price_eur = ?, in_stock = ?, manual = ?, updated_at = ? WHERE id = ?`
-      ).bind(body.url || null, price, currency, priceEur, body.in_stock === false ? 0 : 1, manual, now, id).run();
-      if (priceEur != null) await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?,?)').bind(id, priceEur).run();
+        `UPDATE offers SET url = ?, price = ?, currency = ?, price_eur = ?, in_stock = ?, manual = ?, updated_at = ?, checked_at = ? WHERE id = ?`
+      ).bind(offerUrl, price, currency, priceEur, inStock, manual, now, now, id).run();
+      if (priceEur != null && priceChanged(prev, price, currency)) await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?,?,?,?)').bind(id, priceEur, price, currency).run();
       return json({ ok: true });
     }
     if (method === 'DELETE') {
-      await env.DB.batch([
+      const r = await env.DB.batch([
         env.DB.prepare('DELETE FROM price_history WHERE offer_id = ?').bind(id),
         env.DB.prepare('DELETE FROM offers WHERE id = ?').bind(id),
       ]);
+      if (!r[1].meta?.changes) return fail('Teklif bulunamadı.', 404);
       return json({ ok: true });
     }
   }
@@ -299,7 +412,7 @@ async function admin(parts, method, request, env, url) {
   if (res === 'prices' && method === 'POST') {
     const stmts = [];
     for (const [cur, rate] of Object.entries(body.rates || {})) {
-      if (rate > 0) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
+      if (okRate(cur, rate)) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
     }
     const now = new Date().toISOString();
     let ok = 0, changed = 0;
@@ -312,14 +425,15 @@ async function admin(parts, method, request, env, url) {
       for (const r of rows) prev.set(r.id, r);
     }
     for (const r of results) {
-      if (r.error || !(r.price > 0)) {
+      if (r.error || !okPrice(r.price) || !CURRENCIES.includes(r.currency)) {
         stmts.push(env.DB.prepare('UPDATE offers SET last_error = ?, checked_at = ? WHERE id = ? AND manual = 0').bind(String(r.error || 'Fiyat bulunamadı').slice(0, 300), now, r.id));
         continue;
       }
-      const rate = r.currency === 'EUR' ? 1 : (body.rates || {})[r.currency] || (await rateFor(env, r.currency));
+      const given = (body.rates || {})[r.currency];
+      const rate = r.currency === 'EUR' ? 1 : okRate(r.currency, given) ? +given : await rateFor(env, r.currency);
       if (!rate) continue;
       const eur = Math.round((r.price / rate) * 100) / 100;
-      const old = r.old_price > r.price ? +r.old_price : null;
+      const old = okPrice(r.old_price) && r.old_price > r.price ? +r.old_price : null;
       stmts.push(env.DB.prepare(
         `UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ? AND manual = 0`
       ).bind(r.price, r.currency, eur, r.in_stock === false ? 0 : 1, old, now, now, r.id));
@@ -408,18 +522,20 @@ async function admin(parts, method, request, env, url) {
       }
       if (body.name) { sets.push('name = ?'); vals.push(String(body.name).slice(0, 80)); }
       if (body.site != null) {
-        if (body.site && !/^https?:\/\//.test(body.site)) return fail('Site adresi http:// ya da https:// ile başlamalı.');
-        sets.push('site = ?'); vals.push(String(body.site));
+        sets.push('site = ?'); vals.push(guvenliUrl(body.site, 'Site adresi') || '');
       }
       if (body.resume) { sets.push('paused_until = NULL', 'fail_count = 0'); }
-      await env.DB.prepare(`UPDATE retailers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, parts[1]).run();
+      const r = await env.DB.prepare(`UPDATE retailers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, parts[1] || '').run();
+      if (!r.meta?.changes) return fail('Satıcı bulunamadı.', 404);
       return json({ ok: true });
     }
     if (method === 'POST') {
       if (!body.id || !/^[a-z0-9-]{2,40}$/.test(body.id) || !body.name || !['TR', 'GR', 'BG'].includes(body.country)) return fail('Satıcı kimliği (küçük harf, rakam, tire), adı ve ülkesi (TR/GR/BG) zorunlu.');
-      if (body.site && !/^https?:\/\//.test(body.site)) return fail('Site adresi http:// ya da https:// ile başlamalı.');
+      const site = guvenliUrl(body.site, 'Site adresi');
       const c = checkConfig(body.config);
       if (c.error) return fail(c.error);
+      if (await env.DB.prepare('SELECT 1 FROM retailers WHERE id = ?').bind(body.id).first()) return fail('Bu satıcı kimliği zaten var.', 409);
+      body.site = site;
       await env.DB.prepare('INSERT INTO retailers (id, name, country, site, currency, config, interval_hours) VALUES (?,?,?,?,?,?,?)')
         .bind(body.id, body.name, body.country, body.site || '', body.country === 'TR' ? 'TRY' : 'EUR', c.value, Math.min(168, Math.max(1, Math.round(+body.interval_hours || 6)))).run();
       return json({ ok: true });
@@ -448,7 +564,7 @@ async function catalogUpsert(env, body) {
   const items = (body.items || []).filter((i) => i && i.retailer_id && /^https?:\/\//.test(i.url || '')).slice(0, 12); // ücretsiz planda istek başına sorgu sınırı var
   const stmts = [];
   for (const [cur, rate] of Object.entries(body.rates || {})) {
-    if (rate > 0) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
+    if (okRate(cur, rate)) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
   }
   if (stmts.length) await env.DB.batch(stmts.splice(0));
   const all = await retailers(env);
@@ -476,17 +592,18 @@ async function catalogUpsert(env, body) {
       }
       continue;
     }
-    if (it.error || !(it.price > 0)) {
+    if (it.error || !okPrice(it.price) || (it.currency && !CURRENCIES.includes(it.currency))) {
       if (offer) await env.DB.prepare('UPDATE offers SET last_error = ?, checked_at = ? WHERE id = ? AND manual = 0').bind(String(it.error || 'Fiyat bulunamadı').slice(0, 300), now, offer.id).run();
       out.errors++;
       continue;
     }
     // Sayfada para birimi yazmıyorsa mağazanınki kullanılır (TR mağazası fiyatı euro sanılmasın)
     const currency = it.currency || currencyOf.get(it.retailer_id) || 'EUR';
-    const rate = currency === 'EUR' ? 1 : (body.rates || {})[currency] || (await rateFor(env, currency));
+    const given = (body.rates || {})[currency];
+    const rate = currency === 'EUR' ? 1 : okRate(currency, given) ? +given : await rateFor(env, currency);
     if (!rate) { out.errors++; continue; }
     const eur = Math.round((it.price / rate) * 100) / 100;
-    const oldPrice = it.old_price > it.price ? +it.old_price : null;
+    const oldPrice = okPrice(it.old_price) && it.old_price > it.price ? +it.old_price : null;
     const storeCat = it.store_category ? String(it.store_category).slice(0, 200) : null;
     // Yanlış birleştirilmiş teklif: mağazadaki ürün artık bağlı olduğu kayıtla aynı tür/kategori/kapasitede değil
     // (ör. "HP Pro 400 ... i7-13700 16GB 512GB" masaüstü bir işlemci kaydına, 4 TB SSD 2 TB SSD kaydına bağlanmıştı).

@@ -4,6 +4,7 @@
 import { handleApi } from './api.js';
 import { matchedPage, specsListPage, productPage } from './pages.js';
 import { kapi, noindex } from './giris.js';
+import { GUVENLIK_TABLOLARI, hataKaydi } from './guvenlik.js';
 import SCHEMA from '../schema.sql';
 
 // Tablolar yoksa schema.sql'i çalıştırır (ilk yayından sonraki ilk istekte bir kez)
@@ -66,6 +67,8 @@ async function migrateScraper(env) {
     added INTEGER NOT NULL DEFAULT 0, changed INTEGER NOT NULL DEFAULT 0, unchanged INTEGER NOT NULL DEFAULT 0,
     errors INTEGER NOT NULL DEFAULT 0, message TEXT)`));
   stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at)'));
+  // Giriş denemesi sayacı ve admin oturumları (26 Kasım 2026 güvenlik denetimi)
+  for (const q of GUVENLIK_TABLOLARI) stmts.push(env.DB.prepare(q));
   await env.DB.batch(stmts);
 }
 
@@ -82,7 +85,15 @@ async function setting(env, key) {
 
 export default {
   async fetch(request, env) {
-    return noindex(await handle(request, env));
+    try {
+      return noindex(await handle(request, env));
+    } catch (e) {
+      // Beklenmeyen hata: ayrıntı Worker günlüğüne, kullanıcıya yalnızca takip kodu
+      const id = hataKaydi(e, request, 'worker');
+      const api = new URL(request.url).pathname.startsWith('/api/');
+      return noindex(new Response(api ? JSON.stringify({ error: `Sunucu hatası oluştu. Takip kodu: ${id}`, hata_id: id }) : `Bir hata oluştu. Lütfen biraz sonra tekrar deneyin. (Takip kodu: ${id})`,
+        { status: 500, headers: { 'content-type': api ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'cache-control': 'no-store' } }));
+    }
   },
 };
 

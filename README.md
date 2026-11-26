@@ -11,6 +11,9 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 - Site özeldir: her istek önce `src/giris.js` kapısından geçer. Tarayıcıda `/giris` sayfasında `ADMIN_PASSWORD` girilir, bir yıl geçerli çerez bırakılır (`/cikis` ile çıkılır). Tarama işleri `Bearer ADMIN_PASSWORD` başlığıyla çerezsiz geçer. Arama motorları için `robots.txt` her şeyi kapatır, her yanıtta `X-Robots-Tag: noindex` var, `/sitemap.xml` kapalı
 - Site satış yapmaz: her sayfanın üstündeki bilgi bandı ve fiyat bağlantılarının yanındaki notlar bunu belirtir
 - `/admin` adresinde yönetim paneli: ürün, satıcı bağlantısı, elle fiyat, satıcı açma/kapama, reklam kodları
+- Admin paneli girişi (`src/guvenlik.js`): şifre tarayıcıda saklanmaz; `/api/admin/login` bir kez doğrular ve 12 saatlik HttpOnly, Secure, SameSite=Strict oturum çerezi verir (yalnızca `/api/admin` yolunda). Oturum kimliğinin yalnızca özeti D1 `admin_sessions` tablosunda durur; çıkışta silinir, `ADMIN_PASSWORD` değişince tüm oturumlar düşer. Çerezle gelen değiştirici istekler yalnızca sitenin kendi sayfasından kabul edilir (CSRF)
+- Giriş denemesi sınırı: aynı IP'den 15 dakikada 10 yanlış şifre (site ve admin ayrı sayılır) 15 dakika bekletir (`login_failures` tablosu). Başka IP'deki kullanıcı etkilenmez, doğru şifre sayacı sıfırlar
+- Sunucu hatalarında kullanıcıya genel mesaj ve takip kodu döner; ayrıntı Cloudflare Workers günlüğünde (`hata_id` ile aranır)
 - Hazır reklam alanları (üst, liste içi, alt, `<head>` kodu ve `ads.txt`)
 
 Tamamen ücretsiz katmanlarda çalışır: Cloudflare Workers (site + API, statik dosyalar dahil, GitHub'dan otomatik yayın), Cloudflare D1 (veritabanı), GitHub Actions (testler, katalog tarama ve fiyat çekme).

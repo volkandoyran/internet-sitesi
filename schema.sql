@@ -121,3 +121,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('ad_bottom', ''),
   ('ad_head', ''),
   ('ads_txt', '');
+
+-- Giriş denemesi sayacı (aynı IP'den 15 dakikada 10 yanlış şifre -> 15 dakika bekleme)
+CREATE TABLE IF NOT EXISTS login_failures (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, first_at TEXT NOT NULL, locked_until TEXT);
+-- Admin paneli oturumları: yalnızca oturum kimliğinin SHA-256 özeti saklanır
+CREATE TABLE IF NOT EXISTS admin_sessions (id_hash TEXT PRIMARY KEY, pw_tag TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);

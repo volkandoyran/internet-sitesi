@@ -59,3 +59,30 @@ test('en ucuz ülke stokta olan teklifler arasından seçilir', () => {
   // Hiçbirinde stok yoksa en düşük fiyat
   assert.equal(cheapestOf({ TR: { price_eur: 100, in_stock: 0 }, BG: { price_eur: 150, in_stock: 0 } }).cheapest, 'TR');
 });
+
+test('API sunucu hatası: SQL ayrıntısı sızmaz, takip kodu döner', async () => {
+  const { handleApi } = await import('../src/api.js');
+  const env = { DB: { prepare() { throw new Error('D1_ERROR: no such table: offers: SQLITE_ERROR'); } } };
+  const orig = console.error; const logs = []; console.error = (m) => logs.push(m);
+  try {
+    const r = await handleApi(new Request('https://x/api/products'), env, ['products']);
+    assert.equal(r.status, 500);
+    const b = await r.json();
+    assert.match(b.error, /Takip kodu: [0-9a-f]{8}/);
+    assert.doesNotMatch(JSON.stringify(b), /SQLITE|D1_ERROR|offers/);
+    assert.ok(logs.some((l) => l.includes(b.hata_id) && l.includes('SQLITE_ERROR'))); // ayrıntı yalnızca günlükte
+  } finally { console.error = orig; }
+});
+
+test('admin girdi doğrulayıcıları', async () => {
+  const { fiyat, guvenliUrl, kimlik, urunGirdisi } = await import('../src/api.js');
+  assert.equal(fiyat('1299,90'), 1299.9);
+  assert.equal(fiyat(''), null);
+  for (const v of [-1, 0, NaN, Infinity, '1e3', 'abc', 1e8, true]) assert.throws(() => fiyat(v), undefined, String(v));
+  assert.equal(guvenliUrl(' https://www.pckolik.com.tr/urun/x '), 'https://www.pckolik.com.tr/urun/x');
+  for (const u of ['javascript:alert(1)', 'ftp://a.com/x', 'https://a:b@c.com/', 'https://localhost/x', 'not a url']) assert.throws(() => guvenliUrl(u), undefined, u);
+  assert.equal(kimlik('42'), 42);
+  for (const v of ['0', '-3', '1.5', 'abc', '', null]) assert.throws(() => kimlik(v), undefined, String(v));
+  assert.throws(() => urunGirdisi({ name: 'X', type: 'laptop', screen_in: 'Infinity' }, true));
+  assert.deepEqual(urunGirdisi({ name: '  Lenovo   X1 ', type: 'laptop', ram_gb: '16' }, true), { name: 'Lenovo X1', type: 'laptop', ram_gb: 16 });
+});
