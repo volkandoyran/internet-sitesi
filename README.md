@@ -8,7 +8,7 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 - Türk lirası fiyatlar ECB kuruyla euroya çevrilir
 - `/eslesen`: birden fazla ülkede satılan ürünler, ülkelere göre fiyat ve en ucuz ülke
 - `/ozellikler`: tüm laptop ve masaüstü bilgisayarların teknik özellik listesi; `/urun/<id>-<ad>`: tek ürün sayfası (özellikler, tüm mağazalar, "Mağazada gör" bağlantıları). Özellikler mağaza sayfasındaki özellik tablosundan (tarayıcı fiyatı okurken aynı sayfadan, ek istek ve Firecrawl kredisi harcamadan) ve ürün adından otomatik çıkarılır (`lib/pcspecs.js`)
-- `/sitemap.xml` Worker tarafından üretilir; ürün sayfalarını da içerir
+- Site özeldir: her istek önce `src/giris.js` kapısından geçer. Tarayıcıda `/giris` sayfasında `ADMIN_PASSWORD` girilir, bir yıl geçerli çerez bırakılır (`/cikis` ile çıkılır). Tarama işleri `Bearer ADMIN_PASSWORD` başlığıyla çerezsiz geçer. Arama motorları için `robots.txt` her şeyi kapatır, her yanıtta `X-Robots-Tag: noindex` var, `/sitemap.xml` kapalı
 - Site satış yapmaz: her sayfanın üstündeki bilgi bandı ve fiyat bağlantılarının yanındaki notlar bunu belirtir
 - `/admin` adresinde yönetim paneli: ürün, satıcı bağlantısı, elle fiyat, satıcı açma/kapama, reklam kodları
 - Hazır reklam alanları (üst, liste içi, alt, `<head>` kodu ve `ads.txt`)
