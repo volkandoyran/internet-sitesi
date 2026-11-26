@@ -82,6 +82,8 @@ async function migrateScraper(env) {
   stmts.push(...SCRAPER_COLUMNS.filter(([t, c]) => !have[t].has(c))
     .map(([t, c, def]) => env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`)));
   stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at)'));
+  // Aramada tür/kategori süzgeci tüm ürün tablosunu taramasın (26 Kasım D1 iyileştirmesi)
+  stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS products_type ON products(type, category)'));
   // Giriş denemesi sayacı ve admin oturumları (26 Kasım 2026 güvenlik denetimi)
   for (const q of GUVENLIK_TABLOLARI) stmts.push(env.DB.prepare(q));
   stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS products_gtin ON products(gtin)'));
