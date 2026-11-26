@@ -189,8 +189,9 @@ async function runStore(r) {
       try { await processUrl(id, cfg, url, stat, items); } catch (e) { if (!e.soft) throw e; }
     }
     if (items.length) await post(items.splice(0), stat);
-    stat.ok = stat.sayfa > 0 || queue.length === 0;
-    if (!stat.ok && stat.robots) stat.mesaj = 'robots.txt bu sayfalara izin vermiyor';
+    stat.ok = stat.harita > 0 && (stat.sayfa > 0 || queue.length === 0);
+    if (!stat.harita) stat.mesaj = 'Site haritası bulunamadı ya da boş (panelden adaptör ayarına sitemaps girin).';
+    else if (!stat.ok && stat.robots) stat.mesaj = 'robots.txt bu sayfalara izin vermiyor';
     else if (!stat.ok) stat.mesaj = Object.keys(stat.hatalar)[0] || 'Hiç sayfa okunamadı';
   } catch (e) {
     if (items.length) await post(items.splice(0), stat).catch(() => {});

@@ -83,7 +83,7 @@ export function extractPrice(html, fallbackCurrency) {
 
 const decodeEntities = (s) => String(s || '')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).trim();
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).trim();
 
 function jsonLdProduct(html) {
   for (const [, txt] of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
@@ -126,12 +126,11 @@ export function extractProduct(html, fallbackCurrency) {
   };
 }
 
-// Meta etiketi ya da yaygın "eski fiyat" sınıfları. Yalnızca güncel fiyattan büyük ve makul (3 katından az) değer kabul edilir.
+// Eski fiyat yalnızca ürüne ait olduğu kesin kaynaklardan: Open Graph "original_price" meta etiketi.
+// (Sayfadaki genel "old-price" sınıfları benzer ürün kutularına da ait olabildiği için kullanılmaz; gerekirse
+// mağaza ayarında old_price seçicisi girilir.) Yalnızca güncel fiyattan büyük ve 3 katından küçük değer kabul edilir.
 export function htmlOldPrice(html, price) {
-  const cands = [meta(html, 'product:original_price:amount'), meta(html, 'og:original_price:amount')];
-  const re = /class=["'][^"']*\b(old-price|price-old|oldPrice|old_price|regular-price|price--old|price-before|previous-price|list-price|strike-price)\b[^"']*["'][^>]*>([\s\S]{0,160}?)<\/(?:span|div|del|s|p|strong)>/gi;
-  for (const m of String(html).matchAll(re)) cands.push(stripTags(m[2]));
-  for (const c of cands) {
+  for (const c of [meta(html, 'product:original_price:amount'), meta(html, 'og:original_price:amount')]) {
     const v = parseNumber(c);
     if (v && price && v > price && v < price * 3) return v;
   }

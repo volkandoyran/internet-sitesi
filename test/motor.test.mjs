@@ -35,12 +35,15 @@ test('eski fiyat, açıklama ve kategori (JSON-LD)', () => {
   assert.equal(p.description, '15.6" FHD, 16 GB RAM');
   assert.equal(p.store_category, 'Bilgisayar > Dizüstü');
   assert.equal(breadcrumb('<p>yok</p>'), null);
+  assert.match(extractProduct('<meta property="og:description" content="PcKolik&#x27;te uygun"><script type="application/ld+json">{"@type":"Product","name":"A","offers":{"price":"10"}}</script>', 'TRY').description, /PcKolik'te/);
 });
 
-test('HTML eski fiyat: yalnızca makul değer', () => {
-  assert.equal(htmlOldPrice('<span class="product-old-price old-price">1.299,00 €</span>', 999), 1299);
-  assert.equal(htmlOldPrice('<span class="old-price">899,00 €</span>', 999), null);  // güncelden düşük
-  assert.equal(htmlOldPrice('<span class="old-price">99.999,00</span>', 999), null); // 3 katından fazla
+test('HTML eski fiyat: yalnızca ürünün meta etiketi ve makul değer', () => {
+  assert.equal(htmlOldPrice('<meta property="product:original_price:amount" content="1299.00">', 999), 1299);
+  assert.equal(htmlOldPrice('<meta property="product:original_price:amount" content="899">', 999), null);  // güncelden düşük
+  assert.equal(htmlOldPrice('<meta property="product:original_price:amount" content="99999">', 999), null); // 3 katından fazla
+  // Sayfadaki genel "old-price" kutuları (benzer ürünlere ait olabilir) kullanılmaz
+  assert.equal(htmlOldPrice('<span class="old-price">1.299,00 €</span>', 999), null);
 });
 
 test('CSS seçicileriyle çıkarım (JSON-LD yoksa)', () => {
