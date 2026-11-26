@@ -2,7 +2,7 @@
 // (ör. Yunanistan'da "KINHTO IPHONE 17 PRO MAX 256GB", Bulgaristan'da "Смартфон Apple iPhone 17 Pro Max ... 256GB")
 // ortak anahtarı olanlar tek üründe toplanır; böylece fiyatlar yan yana görünür.
 // Anahtarlar burada (GitHub Actions'ta) hesaplanır; site yalnızca birleştirme sorgularını çalıştırır.
-import { modelKeys, isSpecKey } from '../lib/catalog.js';
+import { modelKeys, compatible, isSpecKey } from '../lib/catalog.js';
 
 // Aynı tür/kategoride ortak anahtarı olan ürünleri gruplar. Dönüş: { merges: [{keep, drop}], keys: [{id, mkeys}] }
 export function planMatches(products) {
@@ -10,8 +10,11 @@ export function planMatches(products) {
   const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
   const owner = new Map();
   const keysOf = new Map();
+  const members = new Map(); // grup kökü -> ürünler (varyant kontrolü için)
+  const fits = (ra, rb) => members.get(ra).every((x) => members.get(rb).every((y) => compatible(x, y)));
   for (const p of products) {
     parent.set(p.id, p.id);
+    members.set(p.id, [p]);
     // Önceki birleştirmelerden gelen anahtarlar korunur (birleşen diğer adların anahtarları)
     // Eski sürümün yanlışlıkla anahtar saydığı hız/ölçü değerleri (ör. "70007000MBS") atılır
     const keys = [...new Set([...modelKeys(p), ...String(p.mkeys || '').split(' ').filter(Boolean)])].filter((k) => !isSpecKey(k));
@@ -20,7 +23,11 @@ export function planMatches(products) {
     const size = p.type === 'part' && ['ssd', 'hdd'].includes(p.category) && p.storage_gb ? p.storage_gb : '';
     for (const k of keys) {
       const scope = `${p.type}|${p.type === 'part' ? p.category || '' : ''}|${size}|${k}`;
-      if (owner.has(scope)) { const a = find(p.id), b = find(owner.get(scope)); if (a !== b) parent.set(a, b); }
+      if (owner.has(scope)) {
+        const a = find(p.id), b = find(owner.get(scope));
+        // Farklı varyant (depolama/RAM) ya da çok farklı fiyat düzeyi: aynı anahtar olsa da birleştirilmez
+        if (a !== b && fits(a, b)) { parent.set(a, b); members.set(b, members.get(b).concat(members.get(a))); members.delete(a); }
+      }
       else owner.set(scope, p.id);
     }
   }
@@ -61,5 +68,5 @@ export async function runMatching(SITE, auth, { dry = false } = {}) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
   if (!SITE || !process.env.ADMIN_PASSWORD) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
-  await runMatching(SITE, { authorization: 'Bearer ' + process.env.ADMIN_PASSWORD }, { dry: process.env.KURU === '1' });
+  await runMatching(SITE, { authorization: 'Bearer ' + (process.env.ADMIN_PASSWORD || '').trim() }, { dry: process.env.KURU === '1' });
 }

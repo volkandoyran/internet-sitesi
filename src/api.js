@@ -1,6 +1,7 @@
 // API. env.DB = D1, env.ADMIN_PASSWORD = gizli anahtar.
 import { cpuScore, gpuScore, parseQuery, distance } from '../lib/specs.js';
 import { cleanSpecs } from '../lib/pcspecs.js';
+import { compatible } from '../lib/catalog.js';
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -83,7 +84,7 @@ async function readProducts(env, where = '', binds = []) {
     `SELECT o.id, o.product_id, o.retailer_id, o.url, o.price, o.currency, o.price_eur, o.in_stock,
             o.updated_at, r.name AS retailer, r.country
        FROM offers o JOIN retailers r ON r.id = o.retailer_id
-      WHERE r.active = 1 AND o.price_eur IS NOT NULL
+      WHERE r.active = 1 AND o.price_eur IS NOT NULL AND o.verified = 1  -- şüpheli (doğrulanmamış) fiyat gösterilmez
         AND (o.manual = 1 OR o.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'))`  // 2 haftadır güncellenmeyen fiyat gösterilmez (updated_at ISO biçiminde; datetime() ile karşılaştırma 1 güne kadar kayıyordu)
     // Süzülmüş okumada yalnızca o ürünlerin teklifleri okunur (offers_product dizini)
     + (where ? ` AND o.product_id IN (SELECT id FROM products ${where})` : '')
@@ -140,7 +141,7 @@ export function sqlWords(q) {
 }
 
 const VISIBLE_OFFER = `SELECT 1 FROM offers o JOIN retailers r ON r.id = o.retailer_id WHERE o.product_id = products.id AND r.active = 1
-  AND o.price_eur IS NOT NULL AND (o.manual = 1 OR o.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'))`;
+  AND o.price_eur IS NOT NULL AND o.verified = 1 AND (o.manual = 1 OR o.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'))`;
 
 export function searchWhere(filters, likes = []) {
   const w = [], b = [];
@@ -416,8 +417,9 @@ async function admin(parts, method, request, env, url) {
   // Eşleştirici için ürün listesi (tarayıcı anahtarları hesaplayıp aynı ürünleri birleştirir)
   if (res === 'match' && method === 'GET') {
     const rows = (await env.DB.prepare(
-      `SELECT p.id, p.name, p.brand, p.type, p.category, p.match_key, p.storage_gb, p.mkeys,
-              (SELECT COUNT(*) FROM offers o WHERE o.product_id = p.id) AS n FROM products p`
+      `SELECT p.id, p.name, p.brand, p.type, p.category, p.match_key, p.storage_gb, p.ram_gb, p.gtin, p.mkeys,
+              (SELECT COUNT(*) FROM offers o WHERE o.product_id = p.id) AS n,
+              (SELECT MIN(price_eur) FROM offers o WHERE o.product_id = p.id AND o.verified = 1) AS price_eur FROM products p`
     ).all()).results;
     return json(rows);
   }
@@ -447,7 +449,7 @@ async function admin(parts, method, request, env, url) {
     if (method === 'GET') {
       // Katalog tarayıcısı için: bilinen otomatik bağlantılar
       const rows = (await env.DB.prepare(
-        `SELECT retailer_id, url, updated_at FROM offers WHERE manual = 0 AND url IS NOT NULL`
+        `SELECT retailer_id, url, updated_at, next_check_at FROM offers WHERE manual = 0 AND url IS NOT NULL`
       ).all()).results;
       return json(rows);
     }
@@ -461,7 +463,8 @@ async function admin(parts, method, request, env, url) {
   if (res === 'history' && method === 'GET') {
     const offers = (await env.DB.prepare(
       `SELECT o.id, o.retailer_id, r.name AS retailer, r.country, o.url, o.price, o.currency, o.price_eur, o.old_price,
-              o.in_stock, o.updated_at, o.checked_at, o.last_error FROM offers o JOIN retailers r ON r.id = o.retailer_id WHERE o.product_id = ?`
+              o.in_stock, o.updated_at, o.checked_at, o.last_error, o.gtin, o.sku, o.source, o.confidence, o.verified,
+              o.pending_price, o.next_check_at FROM offers o JOIN retailers r ON r.id = o.retailer_id WHERE o.product_id = ?`
     ).bind(id).all()).results;
     const history = (await env.DB.prepare(
       `SELECT h.offer_id, h.price_eur, h.price, h.currency, h.at FROM price_history h JOIN offers o ON o.id = h.offer_id
@@ -534,14 +537,19 @@ async function catalogUpsert(env, body) {
   const all = await retailers(env);
   const known = new Set(all.map((r) => r.id));
   const currencyOf = new Map(all.map((r) => [r.id, r.currency]));
+  const intervalOf = new Map(all.map((r) => [r.id, r.interval_hours || 6]));
   const hidden = new Set(all.filter((r) => !r.active).map((r) => r.id));
   const now = new Date().toISOString();
-  const out = { added: 0, updated: 0, removed: 0, errors: 0, linked: 0 };
+  const out = { added: 0, updated: 0, removed: 0, errors: 0, linked: 0, suspicious: 0 };
   for (const it of items) {
     if (!known.has(it.retailer_id)) continue;
+    const gtin = typeof it.gtin === 'string' && /^\d{8,14}$/.test(it.gtin) ? it.gtin : null;
+    const sku = it.sku ? String(it.sku).slice(0, 80) : null;
+    const source = /^(jsonld|meta|html|selector)(\+render)?$/.test(it.source || '') ? it.source : null;
     // Benzersizlik: aynı mağaza + aynı ürün bağlantısı tek teklif (yeniden eklenmez, güncellenir)
     const offer = await env.DB.prepare(
-      `SELECT o.id, o.product_id, o.manual, o.price, o.currency, p.type AS ptype, p.category AS pcat, p.storage_gb AS pstorage,
+      `SELECT o.id, o.product_id, o.manual, o.price, o.currency, o.price_eur, o.verified, o.pending_price, o.stable_count,
+              p.type AS ptype, p.category AS pcat, p.storage_gb AS pstorage,
               (SELECT COUNT(*) FROM offers x WHERE x.product_id = o.product_id) AS siblings
          FROM offers o LEFT JOIN products p ON p.id = o.product_id WHERE o.retailer_id = ? AND o.url = ?`
     ).bind(it.retailer_id, it.url).first();
@@ -557,7 +565,8 @@ async function catalogUpsert(env, body) {
       continue;
     }
     if (it.error || !(it.price > 0)) {
-      if (offer) await env.DB.prepare('UPDATE offers SET last_error = ?, checked_at = ? WHERE id = ? AND manual = 0').bind(String(it.error || 'Fiyat bulunamadı').slice(0, 300), now, offer.id).run();
+      if (offer) await env.DB.prepare('UPDATE offers SET last_error = ?, checked_at = ?, next_check_at = ? WHERE id = ? AND manual = 0')
+        .bind(String(it.error || 'Fiyat bulunamadı').slice(0, 300), now, nextCheck(now, intervalOf.get(it.retailer_id), true, 0), offer.id).run();
       out.errors++;
       continue;
     }
@@ -575,15 +584,32 @@ async function catalogUpsert(env, body) {
     if (offer && !offer.manual && it.type && offer.siblings > 1 && wrongProduct(offer, it)) { detach = offer; }
     if (offer && !detach) {
       if (offer.manual) continue;
+      // Şüpheli fiyat kontrolü: büyük sıçrama hemen kabul edilmez, bir sonraki taramada aynı çıkarsa kabul edilir
+      const j = judgePrice(offer, it.price, eur);
+      const base = intervalOf.get(it.retailer_id);
+      if (j.action === 'hold') {
+        out.suspicious++;
+        await env.DB.prepare(`UPDATE offers SET pending_price = ?, pending_at = ?, checked_at = ?, next_check_at = ?, confidence = ?,
+            last_error = ? WHERE id = ?`).bind(it.price, now, now, nextCheck(now, base, true, 0, true), 40,
+          `Şüpheli fiyat değişimi (${offer.price} → ${it.price} ${currency}): bir sonraki taramada aynı çıkarsa kabul edilecek`, offer.id).run();
+        out.updated++; out.unchanged = (out.unchanged || 0) + 1;
+        continue;
+      }
       // Fiyat değişmediyse geçmişe satır yazılmaz; yalnızca kontrol zamanı ve stok güncellenir
       const moved = priceChanged(offer, it.price, currency);
+      const stable = moved ? 0 : (offer.stable_count || 0) + 1;
+      const verified = j.verified;
+      if (!verified) out.suspicious++;
       await env.DB.batch([
-        env.DB.prepare('UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, store_category = COALESCE(?, store_category), last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ?')
-          .bind(it.price, currency, eur, it.in_stock === false ? 0 : 1, oldPrice, storeCat, now, now, offer.id),
+        env.DB.prepare(`UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, store_category = COALESCE(?, store_category),
+            gtin = COALESCE(?, gtin), sku = COALESCE(?, sku), source = COALESCE(?, source), confidence = ?, verified = ?, pending_price = NULL, pending_at = NULL,
+            stable_count = ?, next_check_at = ?, last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ?`)
+          .bind(it.price, currency, eur, it.in_stock === false ? 0 : 1, oldPrice, storeCat, gtin, sku, source, confidenceOf(source, verified, j.action === 'confirm'),
+            verified, stable, nextCheck(now, base, moved, stable), now, now, offer.id),
         ...(moved ? [env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(offer.id, eur, it.price, currency)] : []),
         // Sınıflandırma/özellik kuralları düzeltildiyse eski kayıt da düzelsin
         // (ör. "DESKTOP ... CORE I5" işlemci sanılmıştı, "RTX 4070 8GB" RAM 8 GB sanılmıştı)
-        ...(it.type ? [refreshProduct(env, offer.product_id, it)] : []),
+        ...(it.type ? [refreshProduct(env, offer.product_id, { ...it, gtin })] : []),
       ]);
       out.updated++;
       if (moved) out.changed = (out.changed || 0) + 1; else out.unchanged = (out.unchanged || 0) + 1;
@@ -591,24 +617,39 @@ async function catalogUpsert(env, body) {
     }
     // Yeni bağlantı: aynı model başka mağazada/ülkede varsa ona bağla.
     // Önce tarayıcının hesapladığı anahtarlar (üretici kodu, model + depolama, işlemci modeli...), sonra eski match_key.
-    let productId = null;
+    // Varyant koruması: depolaması/RAM'i farklı ya da fiyat düzeyi çok farklı ürüne bağlanmaz (lib/catalog.js compatible)
+    let productId = null, linkedTo = null;
     const keys = (Array.isArray(it.keys) ? it.keys : []).filter((k) => typeof k === 'string' && /^[A-Z0-9:А-Я+]{3,80}$/.test(k)).slice(0, 6);
+    const me = { gtin, storage_gb: it.storage_gb, ram_gb: it.ram_gb, price_eur: eur };
     // Disklerde kapasite de tutmalı (aynı serinin farklı kapasiteleri ayrı üründür)
     const disk = it.type === 'part' && ['ssd', 'hdd'].includes(it.category) && +it.storage_gb > 0 ? +it.storage_gb : null;
-    const sizeSql = disk ? ' AND (storage_gb IS NULL OR storage_gb = ?)' : '';
+    const sizeSql = disk ? ' AND (p.storage_gb IS NULL OR p.storage_gb = ?)' : '';
     const sizeArg = disk ? [disk] : [];
-    const notSelf = detach ? ' AND id != ?' : '';
+    const notSelf = detach ? ' AND p.id != ?' : '';
     const selfArg = detach ? [detach.product_id] : [];
-    if (keys.length) {
-      const p = await env.DB.prepare(
-        `SELECT id FROM products WHERE type = ? AND IFNULL(category, '') = IFNULL(?, '') AND (${keys.map(() => 'mkeys LIKE ?').join(' OR ')})${sizeSql}${notSelf} ORDER BY id LIMIT 1`
-      ).bind(it.type, it.category || null, ...keys.map((k) => `% ${k} %`), ...sizeArg, ...selfArg).first();
-      if (p) { productId = p.id; out.linked++; }
+    const CAND = `SELECT p.id, p.gtin, p.storage_gb, p.ram_gb,
+        (SELECT MIN(price_eur) FROM offers WHERE product_id = p.id AND verified = 1) AS price_eur,
+        (SELECT MAX(price_eur) FROM offers WHERE product_id = p.id AND verified = 1) AS max_eur FROM products p`;
+    // Önce barkod: aynı GTIN'li ürün varsa ona bağlanır
+    if (gtin) {
+      const rows = (await env.DB.prepare(`${CAND} WHERE p.gtin = ? AND p.type = ?${notSelf} LIMIT 3`).bind(gtin, it.type, ...selfArg).all()).results;
+      linkedTo = rows.find((c) => compatible(me, c)) || null;
     }
-    if (!productId && it.match_key) {
-      const p = await env.DB.prepare(`SELECT id FROM products WHERE match_key = ? AND type = ?${sizeSql}${notSelf} LIMIT 1`).bind(it.match_key, it.type, ...sizeArg, ...selfArg).first();
-      if (p) { productId = p.id; out.linked++; }
+    if (!linkedTo && keys.length) {
+      const rows = (await env.DB.prepare(
+        `${CAND} WHERE p.type = ? AND IFNULL(p.category, '') = IFNULL(?, '') AND (${keys.map(() => 'p.mkeys LIKE ?').join(' OR ')})${sizeSql}${notSelf} ORDER BY p.id LIMIT 5`
+      ).bind(it.type, it.category || null, ...keys.map((k) => `% ${k} %`), ...sizeArg, ...selfArg).all()).results;
+      linkedTo = rows.find((c) => compatible(me, c)) || null;
     }
+    if (!linkedTo && it.match_key) {
+      const rows = (await env.DB.prepare(`${CAND} WHERE p.match_key = ? AND p.type = ?${sizeSql}${notSelf} LIMIT 5`)
+        .bind(it.match_key, it.type, ...sizeArg, ...selfArg).all()).results;
+      linkedTo = rows.find((c) => compatible(me, c)) || null;
+    }
+    if (linkedTo) { productId = linkedTo.id; out.linked++; }
+    // Aynı ürünün diğer mağazalarından çok sapan yeni fiyat şüphelidir: doğrulanana kadar sitede gösterilmez
+    const outlier = !!linkedTo && linkedTo.price_eur > 0 && (eur < linkedTo.price_eur * 0.4 || eur > linkedTo.max_eur * 2.5);
+    if (outlier) out.suspicious++;
     if (!productId) {
       const p = cleanProduct(it);
       p.match_key = it.match_key || null;
@@ -616,6 +657,7 @@ async function catalogUpsert(env, body) {
       const sp = cleanSpecs(it.specs);
       p.specs = sp ? JSON.stringify(sp) : null;
       p.description = cleanText(it.description, 1000);
+      p.gtin = gtin;
       // Not: dıştaki "keys" (eşleştirme anahtarları) ile karışmasın; aynı ad 22 Kasım'da tüm yeni ürün kayıtlarını durdurmuştu
       const cols = Object.keys(p).filter((k) => p[k] != null);
       const row = await env.DB.prepare(`INSERT INTO products (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) RETURNING id`)
@@ -624,17 +666,22 @@ async function catalogUpsert(env, body) {
     }
     if (detach) {
       // Teklif ve fiyat geçmişi korunur; yalnızca doğru ürüne taşınır
-      await env.DB.prepare('UPDATE offers SET product_id = ?, price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, store_category = COALESCE(?, store_category), last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ?')
-        .bind(productId, it.price, currency, eur, it.in_stock === false ? 0 : 1, oldPrice, storeCat, now, now, detach.id).run();
+      await env.DB.prepare(`UPDATE offers SET product_id = ?, price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, store_category = COALESCE(?, store_category),
+          gtin = COALESCE(?, gtin), sku = COALESCE(?, sku), source = COALESCE(?, source), confidence = ?, verified = ?, pending_price = NULL, pending_at = NULL,
+          stable_count = 0, next_check_at = ?, last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ?`)
+        .bind(productId, it.price, currency, eur, it.in_stock === false ? 0 : 1, oldPrice, storeCat, gtin, sku, source, confidenceOf(source, !outlier),
+          outlier ? 0 : 1, nextCheck(now, intervalOf.get(it.retailer_id), true, 0, outlier), now, now, detach.id).run();
       if (priceChanged(detach, it.price, currency)) await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(detach.id, eur, it.price, currency).run();
       out.detached = (out.detached || 0) + 1;
       out.updated++;
       continue;
     }
     const row = await env.DB.prepare(
-      `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at, checked_at, old_price, store_category)
-       VALUES (?,?,?,?,?,?,?,0,?,?,?,?) RETURNING id`
-    ).bind(productId, it.retailer_id, it.url, it.price, currency, eur, it.in_stock === false ? 0 : 1, now, now, oldPrice, storeCat).first();
+      `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at, checked_at, old_price, store_category,
+         gtin, sku, source, confidence, verified, next_check_at)
+       VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?) RETURNING id`
+    ).bind(productId, it.retailer_id, it.url, it.price, currency, eur, it.in_stock === false ? 0 : 1, now, now, oldPrice, storeCat,
+      gtin, sku, source, confidenceOf(source, !outlier), outlier ? 0 : 1, nextCheck(now, intervalOf.get(it.retailer_id), true, 0, outlier)).first();
     await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(row.id, eur, it.price, currency).run();
     out.added++;
     // Engellendiği için gizlenen mağazadan ürün gelmeye başladıysa mağaza yeniden gösterilir
@@ -655,10 +702,10 @@ function refreshProduct(env, id, it) {
   // Tek mağazalı üründe ad da mağazadakini izler (yanlış birleşmeden ayrılan kayıt eski adla kalmasın)
   return env.DB.prepare(`UPDATE products SET type = ?, category = ?, ${cols.map((c) => `${c} = COALESCE(?, ${c})`).join(', ')},
       specs = CASE WHEN ? IS NULL THEN specs ELSE json_patch(COALESCE(specs, '{}'), ?) END,
-      description = COALESCE(description, ?),
+      description = COALESCE(description, ?), gtin = COALESCE(gtin, ?),
       name = CASE WHEN ? IS NOT NULL AND (SELECT COUNT(*) FROM offers WHERE product_id = products.id) = 1 THEN ? ELSE name END WHERE id = ?`)
     .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), sp ? JSON.stringify(sp) : null, sp ? JSON.stringify(sp) : null,
-      cleanText(it.description, 1000), cleanText(it.name, 300), cleanText(it.name, 300), id);
+      cleanText(it.description, 1000), it.gtin || null, cleanText(it.name, 300), cleanText(it.name, 300), id);
 }
 
 // Mağazadan gelen ürün, teklifin bağlı olduğu kayıtla uyuşmuyor mu? (tür/kategori ya da disk kapasitesi farklı)
@@ -673,6 +720,36 @@ export function wrongProduct(offer, it) {
 }
 
 const cleanText = (v, max) => (typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim().slice(0, max) : null);
+
+// Şüpheli fiyat kararı (mevcut teklif için).
+// - Doğrulanmış fiyat yarıdan fazla düşerse ya da 2,5 katından fazla artarsa: 'hold' (eski fiyat kalır, yeni fiyat bekletilir).
+// - Bekletilen fiyat bir sonraki taramada %2 içinde aynı gelirse: 'confirm' (kabul).
+// - Doğrulanmamış (yeni, diğer mağazalardan sapan) fiyat iki taramada %2 içinde aynı gelirse doğrulanır.
+export function judgePrice(prev, price, eur) {
+  const near = (a, b) => a > 0 && b > 0 && Math.abs(a - b) / Math.max(a, b) <= 0.02;
+  if (!prev || !(prev.price_eur > 0)) return { action: 'accept', verified: 1 };
+  if (prev.verified === 0) return { action: 'accept', verified: near(prev.price, price) ? 1 : 0 };
+  const ratio = eur / prev.price_eur;
+  if (ratio >= 0.5 && ratio <= 2.5) return { action: 'accept', verified: 1 };
+  if (prev.pending_price && near(prev.pending_price, price)) return { action: 'confirm', verified: 1 };
+  return { action: 'hold', verified: 1 };
+}
+
+// Fiyat güvenilirliği (0-100): okunduğu yere göre; doğrulanmamış fiyat düşük puan alır
+export function confidenceOf(source, verified = true, confirmedJump = false) {
+  const base = { jsonld: 90, meta: 80, selector: 75, html: 65 }[String(source || '').replace('+render', '')] ?? 60;
+  let c = base - (String(source || '').endsWith('+render') ? 5 : 0) - (confirmedJump ? 10 : 0);
+  if (!verified) c = Math.min(c, 30);
+  return c;
+}
+
+// Değişim hızına göre bir sonraki kontrol: fiyatı değişen ürün mağazanın normal sıklığıyla, art arda değişmeyen
+// ürün giderek daha seyrek (3 kontrolde bir kat, en çok 4 katı) kontrol edilir. Şüpheli/hatalı olan bir sonraki turda.
+export function nextCheck(nowIso, baseHours = 6, changed = true, stable = 0, soon = false) {
+  const base = Math.max(1, +baseHours || 6);
+  const mult = soon ? 0 : changed ? 1 : Math.min(4, 1 + Math.floor(stable / 3));
+  return new Date(Date.parse(nowIso) + Math.max(0.5, base * mult - 0.25) * 3600e3).toISOString();
+}
 
 // Mağazanın kendi para birimindeki fiyat değişti mi? (kur oynaması fiyat değişimi sayılmaz)
 export function priceChanged(prev, price, currency) {
@@ -701,7 +778,7 @@ export function checkConfig(raw) {
 }
 
 // ---------- Veri toplama motoru ----------
-const RUN_FIELDS = ['pages', 'added', 'changed', 'unchanged', 'errors'];
+const RUN_FIELDS = ['pages', 'added', 'changed', 'unchanged', 'errors', 'requests', 'duration_s', 'suspicious'];
 async function scraperApi(parts, method, body, env) {
   const [what, arg] = parts;
   const now = new Date();
@@ -728,7 +805,7 @@ async function scraperApi(parts, method, body, env) {
       const n = RUN_FIELDS.map((k) => Math.max(0, Math.round(+r[k] || 0)));
       const msg = r.message ? String(r.message).slice(0, 500) : null;
       const at = r.finished_at || iso;
-      stmts.push(env.DB.prepare(`INSERT INTO scrape_runs (retailer_id, started_at, finished_at, ok, blocked, ${RUN_FIELDS.join(', ')}, message) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      stmts.push(env.DB.prepare(`INSERT INTO scrape_runs (retailer_id, started_at, finished_at, ok, blocked, ${RUN_FIELDS.join(', ')}, message) VALUES (?,?,?,?,?,${RUN_FIELDS.map(() => '?').join(',')},?)`)
         .bind(r.retailer_id, r.started_at || iso, at, r.ok ? 1 : 0, r.blocked ? 1 : 0, ...n, msg));
       if (r.ok) {
         stmts.push(env.DB.prepare('UPDATE retailers SET last_run_at = ?, last_ok_at = ?, run_requested = 0, fail_count = 0, paused_until = NULL WHERE id = ?').bind(at, at, r.retailer_id));
@@ -750,7 +827,8 @@ async function scraperApi(parts, method, body, env) {
     const [rows, counts, runs] = await Promise.all([
       retailers(env),
       env.DB.prepare(`SELECT retailer_id, COUNT(*) AS offers, COUNT(DISTINCT product_id) AS products, SUM(last_error IS NOT NULL) AS errors,
-          MAX(checked_at) AS last_checked FROM offers GROUP BY retailer_id`).all(),
+          SUM(verified = 0) AS unverified, SUM(pending_price IS NOT NULL) AS pending, SUM(gtin IS NOT NULL) AS with_gtin,
+          ROUND(AVG(confidence)) AS confidence, MAX(checked_at) AS last_checked FROM offers GROUP BY retailer_id`).all(),
       env.DB.prepare('SELECT * FROM scrape_runs ORDER BY id DESC LIMIT 60').all(),
     ]);
     const by = new Map(counts.results.map((c) => [c.retailer_id, c]));

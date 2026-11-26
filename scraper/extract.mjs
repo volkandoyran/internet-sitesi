@@ -118,12 +118,30 @@ export function extractProduct(html, fallbackCurrency) {
   }
   if (!name || !found) return null;
   const description = stripTags(typeof ld.description === 'string' ? ld.description : '') || decodeEntities(meta(html, 'og:description') || meta(html, 'description') || '') || null;
+  const offer = [...walk(ld.offers || [])][0] || {};
+  const source = fromJsonLd(html) ? 'jsonld' : parseNumber(meta(html, 'product:price:amount') || meta(html, 'og:price:amount') || meta(html, 'price')) ? 'meta' : 'html';
   return {
     name: name.slice(0, 300), brand: brand || null, mpn, image, ...found,
+    gtin: validGtin(ld.gtin13 ?? ld.gtin ?? ld.gtin14 ?? ld.gtin12 ?? ld.gtin8 ?? offer.gtin13 ?? offer.gtin ?? meta(html, 'product:ean') ?? meta(html, 'gtin13')),
+    sku: ld.sku != null && String(ld.sku).trim() ? String(ld.sku).trim().slice(0, 80) : null,
+    source,
     old_price: found.old_price || htmlOldPrice(html, found.price),
     description: description ? description.slice(0, 1000) : null,
     store_category: breadcrumb(html, name) || (typeof ld.category === 'string' ? decodeEntities(ld.category).slice(0, 200) : null),
   };
+}
+
+// Barkod: yalnızca 8/12/13/14 haneli ve sağlama basamağı doğru olan değer kabul edilir (EAN-13'e tamamlanır).
+// Yanlış ya da uydurma kodlar (ör. "0000000000000", ürün numarası) eşleştirmeyi bozmasın.
+export function validGtin(raw) {
+  if (raw == null) return null;
+  const d = String(Array.isArray(raw) ? raw[0] : raw).replace(/\D/g, '');
+  if (![8, 12, 13, 14].includes(d.length) || /^0+$/.test(d) || /^(\d)\1+$/.test(d)) return null;
+  const digits = [...d].map(Number);
+  const check = digits.pop();
+  const sum = digits.reverse().reduce((s, n, i) => s + n * (i % 2 === 0 ? 3 : 1), 0);
+  if ((10 - (sum % 10)) % 10 !== check) return null;
+  return d.length === 8 ? d : d.padStart(13, '0').slice(-14).replace(/^0(?=\d{13}$)/, '');
 }
 
 // Eski fiyat yalnızca ürüne ait olduğu kesin kaynaklardan: Open Graph "original_price" meta etiketi.
@@ -170,7 +188,7 @@ export function applySelectors(html, base, selectors, fallbackCurrency) {
   for (const k of ['name', 'brand', 'image', 'description', 'store_category']) if (!out[k] && selectors[k]) out[k] = read(selectors[k]);
   if (!out.price && selectors.price) {
     const v = parseNumber(read(selectors.price));
-    if (v) { out.price = v; out.currency = out.currency || fallbackCurrency; }
+    if (v) { out.price = v; out.currency = out.currency || fallbackCurrency; out.source = 'selector'; }
   }
   if (!out.old_price && selectors.old_price) {
     const v = parseNumber(read(selectors.old_price));
@@ -180,7 +198,8 @@ export function applySelectors(html, base, selectors, fallbackCurrency) {
   else if (selectors.in_stock) out.in_stock = $(selectors.in_stock).length > 0;
   if (out.in_stock == null && out.price) out.in_stock = true;
   if (!out.name || !out.price) return null;
-  for (const k of ['brand', 'mpn', 'image', 'old_price', 'description', 'store_category']) if (out[k] === undefined) out[k] = null;
+  for (const k of ['brand', 'mpn', 'image', 'old_price', 'description', 'store_category', 'gtin', 'sku']) if (out[k] === undefined) out[k] = null;
+  if (!out.source) out.source = 'selector';
   return out;
 }
 

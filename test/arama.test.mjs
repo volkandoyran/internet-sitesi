@@ -58,6 +58,7 @@ function fixture() {
       off.run(id, s, `https://${s}.example/${id}-${k}`, c === 'TRY' ? eur * 55 : eur, c, eur, (id + k) % 5 === 0 ? 0 : 1, id === 16 ? old : now);
     }
   }
+  db.exec('UPDATE offers SET verified = 0 WHERE id % 7 = 0'); // şüpheli fiyatlar gösterilmez
   return db;
 }
 

@@ -52,22 +52,38 @@ export const SCRAPER_COLUMNS = [
   ['retailers', 'last_error', 'TEXT'],
   ['retailers', 'paused_until', 'TEXT'],
   ['retailers', 'fail_count', 'INTEGER NOT NULL DEFAULT 0'],
+  // 26 Kasım (2. aşama): barkod/SKU, kaynak ve güvenilirlik, şüpheli fiyat doğrulaması, değişim hızına göre sıklık, ölçüm
+  ['products', 'gtin', 'TEXT'],
+  ['offers', 'gtin', 'TEXT'],
+  ['offers', 'sku', 'TEXT'],
+  ['offers', 'source', 'TEXT'],
+  ['offers', 'confidence', 'INTEGER'],
+  ['offers', 'verified', 'INTEGER NOT NULL DEFAULT 1'],
+  ['offers', 'pending_price', 'REAL'],
+  ['offers', 'pending_at', 'TEXT'],
+  ['offers', 'stable_count', 'INTEGER NOT NULL DEFAULT 0'],
+  ['offers', 'next_check_at', 'TEXT'],
+  ['scrape_runs', 'requests', 'INTEGER NOT NULL DEFAULT 0'],
+  ['scrape_runs', 'duration_s', 'INTEGER NOT NULL DEFAULT 0'],
+  ['scrape_runs', 'suspicious', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 async function migrateScraper(env) {
   const have = {};
   for (const t of new Set(SCRAPER_COLUMNS.map((c) => c[0]))) {
     have[t] = new Set((await env.DB.prepare(`PRAGMA table_info(${t})`).all()).results.map((c) => c.name));
   }
-  const stmts = SCRAPER_COLUMNS.filter(([t, c]) => !have[t].has(c))
-    .map(([t, c, def]) => env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`));
-  stmts.push(env.DB.prepare(`CREATE TABLE IF NOT EXISTS scrape_runs (
+  // Tablo önce kurulur (yeni kurulumda yoksa), sütunlar sonra eklenir
+  const stmts = [env.DB.prepare(`CREATE TABLE IF NOT EXISTS scrape_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT, retailer_id TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
     ok INTEGER NOT NULL DEFAULT 0, blocked INTEGER NOT NULL DEFAULT 0, pages INTEGER NOT NULL DEFAULT 0,
     added INTEGER NOT NULL DEFAULT 0, changed INTEGER NOT NULL DEFAULT 0, unchanged INTEGER NOT NULL DEFAULT 0,
-    errors INTEGER NOT NULL DEFAULT 0, message TEXT)`));
+    errors INTEGER NOT NULL DEFAULT 0, message TEXT)`)];
+  stmts.push(...SCRAPER_COLUMNS.filter(([t, c]) => !have[t].has(c))
+    .map(([t, c, def]) => env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`)));
   stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at)'));
   // Aramada tür/kategori süzgeci tüm ürün tablosunu taramasın (26 Kasım D1 iyileştirmesi)
   stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS products_type ON products(type, category)'));
+  stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS products_gtin ON products(gtin)'));
   await env.DB.batch(stmts);
 }
 
