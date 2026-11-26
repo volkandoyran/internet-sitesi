@@ -24,7 +24,7 @@ export async function handleApi(request, env, parts) {
     if (method !== 'GET') return fail('Desteklenmeyen istek', 405);
     if (parts[0] === 'products' && parts[1]) return await productDetail(env, +parts[1]);
     if (parts[0] === 'products') return await search(env, url.searchParams);
-    if (parts[0] === 'retailers') return json(await retailers(env));
+    if (parts[0] === 'retailers') return json(await publicRetailers(env));
     if (parts[0] === 'ads') return json({ ...(await ads(env)), rate_TRY: await rateFor(env, 'TRY') });
     return fail('Bulunamadı', 404);
   } catch (e) {
@@ -47,6 +47,9 @@ async function isAdmin(request, env) {
 
 const retailers = async (env) =>
   (await env.DB.prepare('SELECT * FROM retailers ORDER BY country, name').all()).results;
+// Herkese açık liste: tarayıcı ayarları ve hata mesajları gösterilmez
+const publicRetailers = async (env) =>
+  (await env.DB.prepare('SELECT id, name, country, site, currency, active FROM retailers ORDER BY country, name').all()).results;
 
 async function ads(env) {
   const rows = (await env.DB.prepare(
@@ -273,30 +276,43 @@ async function admin(parts, method, request, env, url) {
     }
   }
 
-  // Fiyat çekicinin toplu sonucu: { rates: {TRY: 50.1}, results: [{id, price, currency, in_stock, error}] }
+  // Fiyat çekicinin toplu sonucu: { rates: {TRY: 50.1}, results: [{id, price, currency, in_stock, old_price, error}] }
+  // Fiyat değişmediyse yalnızca kontrol zamanı yazılır; geçmişe yeni satır eklenmez.
   if (res === 'prices' && method === 'POST') {
     const stmts = [];
     for (const [cur, rate] of Object.entries(body.rates || {})) {
       if (rate > 0) stmts.push(env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('rate_' + cur, String(rate)));
     }
     const now = new Date().toISOString();
-    let ok = 0;
-    for (const r of body.results || []) {
+    let ok = 0, changed = 0;
+    const results = (body.results || []).slice(0, 200);
+    const ids = results.map((r) => +r.id).filter(Number.isInteger);
+    const prev = new Map();
+    for (let i = 0; i < ids.length; i += 90) {
+      const part = ids.slice(i, i + 90);
+      const rows = (await env.DB.prepare(`SELECT id, price, currency FROM offers WHERE id IN (${part.map(() => '?').join(',')})`).bind(...part).all()).results;
+      for (const r of rows) prev.set(r.id, r);
+    }
+    for (const r of results) {
       if (r.error || !(r.price > 0)) {
-        stmts.push(env.DB.prepare('UPDATE offers SET last_error = ? WHERE id = ? AND manual = 0').bind(String(r.error || 'Fiyat bulunamadı').slice(0, 300), r.id));
+        stmts.push(env.DB.prepare('UPDATE offers SET last_error = ?, checked_at = ? WHERE id = ? AND manual = 0').bind(String(r.error || 'Fiyat bulunamadı').slice(0, 300), now, r.id));
         continue;
       }
       const rate = r.currency === 'EUR' ? 1 : (body.rates || {})[r.currency] || (await rateFor(env, r.currency));
       if (!rate) continue;
       const eur = Math.round((r.price / rate) * 100) / 100;
+      const old = r.old_price > r.price ? +r.old_price : null;
       stmts.push(env.DB.prepare(
-        `UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, last_error = NULL, updated_at = ? WHERE id = ? AND manual = 0`
-      ).bind(r.price, r.currency, eur, r.in_stock === false ? 0 : 1, now, r.id));
-      stmts.push(env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(r.id, eur));
+        `UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ? AND manual = 0`
+      ).bind(r.price, r.currency, eur, r.in_stock === false ? 0 : 1, old, now, now, r.id));
+      if (priceChanged(prev.get(+r.id), r.price, r.currency)) {
+        stmts.push(env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(r.id, eur, r.price, r.currency));
+        changed++;
+      }
       ok++;
     }
     for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
-    return json({ ok: true, updated: ok });
+    return json({ ok: true, updated: ok, changed });
   }
 
   // Eşleştirici için ürün listesi (tarayıcı anahtarları hesaplayıp aynı ürünleri birleştirir)
@@ -340,58 +356,54 @@ async function admin(parts, method, request, env, url) {
     if (method === 'POST') return json(await catalogUpsert(env, body));
   }
 
-  // Fiyat çekici için Firecrawl köprüsü: mağaza GitHub'dan gelen isteği engellediğinde sayfa Firecrawl ile alınır.
-  // Anahtar yalnızca Worker'da (FIRECRAWL_API_KEY gizli ayarı) durur.
-  if (res === 'firecrawl' && method === 'GET') {
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'firecrawl_limit'").first();
-    const out = { enabled: !!env.FIRECRAWL_API_KEY, limit: row ? +row.value : 8, remaining: null, renews: null };
-    // Kalan kredi ve dönem sonu: kredi bitince tarayıcı hata vermeden bekler, yenilenince kendiliğinden devam eder.
-    // Elle sınır yoksa kalan kredi dönem sonuna kadarki çalıştırmalara (günde 4) eşit bölünür.
-    if (env.FIRECRAWL_API_KEY) {
-      try {
-        const r = await fetch('https://api.firecrawl.dev/v2/team/credit-usage', { headers: { authorization: 'Bearer ' + env.FIRECRAWL_API_KEY } });
-        const d = r.ok ? (await r.json()).data || {} : {};
-        if (Number.isFinite(+d.remainingCredits)) {
-          out.remaining = Math.max(0, +d.remainingCredits);
-          out.renews = d.billingPeriodEnd || null;
-          const end = Date.parse(d.billingPeriodEnd || '');
-          const runsLeft = Number.isFinite(end) ? Math.max(1, Math.ceil((end - Date.now()) / (6 * 3600e3))) : 30 * 4;
-          if (!row) out.limit = Math.min(60, Math.max(8, Math.floor(out.remaining / runsLeft)));
-          out.limit = Math.min(out.limit, out.remaining);
-        }
-      } catch {}
-    }
-    return json(out);
-  }
-  if (res === 'firecrawl' && method === 'POST') {
-    if (!env.FIRECRAWL_API_KEY) return fail('FIRECRAWL_API_KEY ayarlı değil', 501);
-    if (!/^https?:\/\//.test(body.url || '')) return fail('url gerekli');
-    const map = body.mode === 'map';
-    const r = await fetch(`https://api.firecrawl.dev/v2/${map ? 'map' : 'scrape'}`, {
-      method: 'POST',
-      headers: { authorization: 'Bearer ' + env.FIRECRAWL_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify(map
-        ? { url: body.url, search: body.search || undefined, limit: Math.min(+body.limit || 5000, 5000), sitemap: 'include' }
-        : { url: body.url, formats: ['rawHtml'], onlyMainContent: false, proxy: 'auto', maxAge: 6 * 3600 * 1000, timeout: 60000 }),
-    });
-    const d = await r.json().catch(() => ({}));
-    // 402: kredi bitti. Tarayıcı bunu hata saymaz, Firecrawl'ı bu çalıştırmada bırakır.
-    if (!r.ok || d.success === false) return json({ ok: false, status: r.status, exhausted: r.status === 402, error: String(d.error || d.message || r.status).slice(0, 300) }, 502);
-    if (map) return json({ ok: true, links: (d.links || []).map((l) => (typeof l === 'string' ? l : l.url)).filter(Boolean) });
-    return json({ ok: true, html: d.data?.rawHtml || '', status: d.data?.metadata?.statusCode || 200, credits: d.data?.metadata?.creditsUsed ?? null });
+  // Veri toplama motoru (scraper/): plan, rapor, durum, elle çalıştırma
+  if (res === 'scraper') return await scraperApi(parts.slice(1), method, body, env);
+
+  // Bir ürünün tüm mağaza fiyatları ve fiyat değişim geçmişi
+  if (res === 'history' && method === 'GET') {
+    const offers = (await env.DB.prepare(
+      `SELECT o.id, o.retailer_id, r.name AS retailer, r.country, o.url, o.price, o.currency, o.price_eur, o.old_price,
+              o.in_stock, o.updated_at, o.checked_at, o.last_error FROM offers o JOIN retailers r ON r.id = o.retailer_id WHERE o.product_id = ?`
+    ).bind(id).all()).results;
+    const history = (await env.DB.prepare(
+      `SELECT h.offer_id, h.price_eur, h.price, h.currency, h.at FROM price_history h JOIN offers o ON o.id = h.offer_id
+        WHERE o.product_id = ? ORDER BY h.at DESC LIMIT 300`
+    ).bind(id).all()).results;
+    return json({ offers, history });
   }
 
   if (res === 'retailers') {
     if (method === 'GET') return json(await retailers(env));
     if (method === 'PUT') {
-      await env.DB.prepare('UPDATE retailers SET active = ?, scrape = ? WHERE id = ?')
-        .bind(body.active ? 1 : 0, body.scrape ? 1 : 0, parts[1]).run();
+      // Eski panel yalnızca active/scrape gönderir; diğer alanlar gönderildiyse güncellenir
+      const sets = ['active = ?', 'scrape = ?'];
+      const vals = [body.active ? 1 : 0, body.scrape ? 1 : 0];
+      if (body.interval_hours != null) {
+        const h = Math.round(+body.interval_hours);
+        if (!(h >= 1 && h <= 168)) return fail('Tarama sıklığı 1-168 saat arasında olmalı.');
+        sets.push('interval_hours = ?'); vals.push(h);
+      }
+      if ('config' in body) {
+        const c = checkConfig(body.config);
+        if (c.error) return fail(c.error);
+        sets.push('config = ?'); vals.push(c.value);
+      }
+      if (body.name) { sets.push('name = ?'); vals.push(String(body.name).slice(0, 80)); }
+      if (body.site != null) {
+        if (body.site && !/^https?:\/\//.test(body.site)) return fail('Site adresi http:// ya da https:// ile başlamalı.');
+        sets.push('site = ?'); vals.push(String(body.site));
+      }
+      if (body.resume) { sets.push('paused_until = NULL', 'fail_count = 0'); }
+      await env.DB.prepare(`UPDATE retailers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, parts[1]).run();
       return json({ ok: true });
     }
     if (method === 'POST') {
-      if (!body.id || !body.name || !['TR', 'GR', 'BG'].includes(body.country)) return fail('Satıcı kimliği, adı ve ülkesi (TR/GR/BG) zorunlu.');
-      await env.DB.prepare('INSERT INTO retailers (id, name, country, site, currency) VALUES (?,?,?,?,?)')
-        .bind(body.id, body.name, body.country, body.site || '', body.country === 'TR' ? 'TRY' : 'EUR').run();
+      if (!body.id || !/^[a-z0-9-]{2,40}$/.test(body.id) || !body.name || !['TR', 'GR', 'BG'].includes(body.country)) return fail('Satıcı kimliği (küçük harf, rakam, tire), adı ve ülkesi (TR/GR/BG) zorunlu.');
+      if (body.site && !/^https?:\/\//.test(body.site)) return fail('Site adresi http:// ya da https:// ile başlamalı.');
+      const c = checkConfig(body.config);
+      if (c.error) return fail(c.error);
+      await env.DB.prepare('INSERT INTO retailers (id, name, country, site, currency, config, interval_hours) VALUES (?,?,?,?,?,?,?)')
+        .bind(body.id, body.name, body.country, body.site || '', body.country === 'TR' ? 'TRY' : 'EUR', c.value, Math.min(168, Math.max(1, Math.round(+body.interval_hours || 6)))).run();
       return json({ ok: true });
     }
   }
@@ -429,7 +441,8 @@ async function catalogUpsert(env, body) {
   const out = { added: 0, updated: 0, removed: 0, errors: 0, linked: 0 };
   for (const it of items) {
     if (!known.has(it.retailer_id)) continue;
-    const offer = await env.DB.prepare('SELECT id, product_id, manual FROM offers WHERE retailer_id = ? AND url = ?').bind(it.retailer_id, it.url).first();
+    // Benzersizlik: aynı mağaza + aynı ürün bağlantısı tek teklif (yeniden eklenmez, güncellenir)
+    const offer = await env.DB.prepare('SELECT id, product_id, manual, price, currency FROM offers WHERE retailer_id = ? AND url = ?').bind(it.retailer_id, it.url).first();
     if (it.gone) {
       if (offer && !offer.manual) {
         await env.DB.batch([
@@ -442,7 +455,7 @@ async function catalogUpsert(env, body) {
       continue;
     }
     if (it.error || !(it.price > 0)) {
-      if (offer) await env.DB.prepare('UPDATE offers SET last_error = ? WHERE id = ? AND manual = 0').bind(String(it.error || 'Fiyat bulunamadı').slice(0, 300), offer.id).run();
+      if (offer) await env.DB.prepare('UPDATE offers SET last_error = ?, checked_at = ? WHERE id = ? AND manual = 0').bind(String(it.error || 'Fiyat bulunamadı').slice(0, 300), now, offer.id).run();
       out.errors++;
       continue;
     }
@@ -451,17 +464,22 @@ async function catalogUpsert(env, body) {
     const rate = currency === 'EUR' ? 1 : (body.rates || {})[currency] || (await rateFor(env, currency));
     if (!rate) { out.errors++; continue; }
     const eur = Math.round((it.price / rate) * 100) / 100;
+    const oldPrice = it.old_price > it.price ? +it.old_price : null;
+    const storeCat = it.store_category ? String(it.store_category).slice(0, 200) : null;
     if (offer) {
       if (offer.manual) continue;
+      // Fiyat değişmediyse geçmişe satır yazılmaz; yalnızca kontrol zamanı ve stok güncellenir
+      const moved = priceChanged(offer, it.price, currency);
       await env.DB.batch([
-        env.DB.prepare('UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, last_error = NULL, updated_at = ? WHERE id = ?')
-          .bind(it.price, currency, eur, it.in_stock === false ? 0 : 1, now, offer.id),
-        env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(offer.id, eur),
+        env.DB.prepare('UPDATE offers SET price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, store_category = COALESCE(?, store_category), last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ?')
+          .bind(it.price, currency, eur, it.in_stock === false ? 0 : 1, oldPrice, storeCat, now, now, offer.id),
+        ...(moved ? [env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(offer.id, eur, it.price, currency)] : []),
         // Sınıflandırma/özellik kuralları düzeltildiyse eski kayıt da düzelsin
         // (ör. "DESKTOP ... CORE I5" işlemci sanılmıştı, "RTX 4070 8GB" RAM 8 GB sanılmıştı)
         ...(it.type ? [refreshProduct(env, offer.product_id, it)] : []),
       ]);
       out.updated++;
+      if (moved) out.changed = (out.changed || 0) + 1; else out.unchanged = (out.unchanged || 0) + 1;
       continue;
     }
     // Yeni bağlantı: aynı model başka mağazada/ülkede varsa ona bağla.
@@ -484,6 +502,7 @@ async function catalogUpsert(env, body) {
       p.mkeys = keys.length ? ` ${keys.join(' ')} ` : null;
       const sp = cleanSpecs(it.specs);
       p.specs = sp ? JSON.stringify(sp) : null;
+      p.description = cleanText(it.description, 1000);
       // Not: dıştaki "keys" (eşleştirme anahtarları) ile karışmasın; aynı ad 22 Kasım'da tüm yeni ürün kayıtlarını durdurmuştu
       const cols = Object.keys(p).filter((k) => p[k] != null);
       const row = await env.DB.prepare(`INSERT INTO products (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) RETURNING id`)
@@ -491,10 +510,10 @@ async function catalogUpsert(env, body) {
       productId = row.id;
     }
     const row = await env.DB.prepare(
-      `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at)
-       VALUES (?,?,?,?,?,?,?,0,?) RETURNING id`
-    ).bind(productId, it.retailer_id, it.url, it.price, currency, eur, it.in_stock === false ? 0 : 1, now).first();
-    await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur) VALUES (?, ?)').bind(row.id, eur).run();
+      `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at, checked_at, old_price, store_category)
+       VALUES (?,?,?,?,?,?,?,0,?,?,?,?) RETURNING id`
+    ).bind(productId, it.retailer_id, it.url, it.price, currency, eur, it.in_stock === false ? 0 : 1, now, now, oldPrice, storeCat).first();
+    await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(row.id, eur, it.price, currency).run();
     out.added++;
     // Engellendiği için gizlenen mağazadan ürün gelmeye başladıysa mağaza yeniden gösterilir
     if (hidden.has(it.retailer_id)) {
@@ -512,8 +531,119 @@ function refreshProduct(env, id, it) {
   // Mağaza sayfasındaki teknik özellikler mevcut olanlarla birleştirilir (aynı ürün birden çok mağazadan gelebilir)
   const sp = cleanSpecs(it.specs);
   return env.DB.prepare(`UPDATE products SET type = ?, category = ?, ${cols.map((c) => `${c} = COALESCE(?, ${c})`).join(', ')},
-      specs = CASE WHEN ? IS NULL THEN specs ELSE json_patch(COALESCE(specs, '{}'), ?) END WHERE id = ?`)
-    .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), sp ? JSON.stringify(sp) : null, sp ? JSON.stringify(sp) : null, id);
+      specs = CASE WHEN ? IS NULL THEN specs ELSE json_patch(COALESCE(specs, '{}'), ?) END,
+      description = COALESCE(description, ?) WHERE id = ?`)
+    .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), sp ? JSON.stringify(sp) : null, sp ? JSON.stringify(sp) : null,
+      cleanText(it.description, 1000), id);
+}
+
+const cleanText = (v, max) => (typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim().slice(0, max) : null);
+
+// Mağazanın kendi para birimindeki fiyat değişti mi? (kur oynaması fiyat değişimi sayılmaz)
+export function priceChanged(prev, price, currency) {
+  if (!prev || prev.price == null) return true;
+  if ((prev.currency || null) !== (currency || null)) return true;
+  return Math.abs(+prev.price - +price) >= 0.005;
+}
+
+// Mağaza adaptör ayarı (admin panelinden). Boş bırakılabilir. Örnek:
+// {"sitemaps":["https://site/sitemap.xml"],"robotsSitemaps":true,"urlPattern":"/urun/","render":false,
+//  "selectors":{"name":"h1","price":".price","old_price":".old-price","in_stock":".stock","image":"img.main@src"}}
+const CONFIG_KEYS = ['sitemaps', 'robotsSitemaps', 'urlPattern', 'render', 'selectors', 'currency', 'newLimit', 'refreshLimit', 'delayMs'];
+export function checkConfig(raw) {
+  if (raw == null || raw === '' || (typeof raw === 'string' && !raw.trim())) return { value: null };
+  let c;
+  try { c = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return { error: 'Adaptör ayarı geçerli JSON değil.' }; }
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return { error: 'Adaptör ayarı bir JSON nesnesi olmalı.' };
+  const extra = Object.keys(c).filter((k) => !CONFIG_KEYS.includes(k));
+  if (extra.length) return { error: 'Bilinmeyen ayar: ' + extra.join(', ') + '. Geçerli: ' + CONFIG_KEYS.join(', ') };
+  if (c.sitemaps && (!Array.isArray(c.sitemaps) || c.sitemaps.some((u) => !/^https?:\/\//.test(u)))) return { error: 'sitemaps, http(s) adreslerinden oluşan bir liste olmalı.' };
+  if (c.urlPattern) { try { new RegExp(c.urlPattern); } catch { return { error: 'urlPattern geçerli bir düzenli ifade değil.' }; } }
+  if (c.selectors && (typeof c.selectors !== 'object' || Array.isArray(c.selectors))) return { error: 'selectors bir nesne olmalı.' };
+  const value = JSON.stringify(c);
+  if (value.length > 4000) return { error: 'Adaptör ayarı çok uzun.' };
+  return { value };
+}
+
+// ---------- Veri toplama motoru ----------
+const RUN_FIELDS = ['pages', 'added', 'changed', 'unchanged', 'errors'];
+async function scraperApi(parts, method, body, env) {
+  const [what, arg] = parts;
+  const now = new Date();
+  const iso = now.toISOString();
+  // GitHub Actions saatte bir sorar: hangi mağazaların zamanı geldi?
+  if (what === 'plan' && method === 'GET') {
+    const rows = await retailers(env);
+    const plan = rows.map((r) => {
+      const paused = r.paused_until && r.paused_until > iso;
+      const next = r.last_run_at ? Date.parse(r.last_run_at) + (r.interval_hours || 6) * 3600e3 - 10 * 60e3 : 0; // 10 dk tolerans
+      const due = !!r.scrape && !paused && (r.run_requested === 1 || !Number.isFinite(next) || next <= now.getTime());
+      return { id: r.id, name: r.name, country: r.country, site: r.site, currency: r.currency, active: r.active, scrape: r.scrape,
+        interval_hours: r.interval_hours, config: r.config ? JSON.parse(r.config) : null, paused_until: paused ? r.paused_until : null,
+        run_requested: r.run_requested === 1, last_run_at: r.last_run_at, due };
+    });
+    return json({ now: iso, retailers: plan });
+  }
+  // Tarama sonucu: { runs: [{retailer_id, started_at, finished_at, ok, blocked, pause_hours, message, pages, added, changed, unchanged, errors}] }
+  if (what === 'report' && method === 'POST') {
+    const known = new Set((await retailers(env)).map((r) => r.id));
+    const stmts = [];
+    for (const r of (body.runs || []).slice(0, 40)) {
+      if (!known.has(r.retailer_id)) continue;
+      const n = RUN_FIELDS.map((k) => Math.max(0, Math.round(+r[k] || 0)));
+      const msg = r.message ? String(r.message).slice(0, 500) : null;
+      const at = r.finished_at || iso;
+      stmts.push(env.DB.prepare(`INSERT INTO scrape_runs (retailer_id, started_at, finished_at, ok, blocked, ${RUN_FIELDS.join(', ')}, message) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(r.retailer_id, r.started_at || iso, at, r.ok ? 1 : 0, r.blocked ? 1 : 0, ...n, msg));
+      if (r.ok) {
+        stmts.push(env.DB.prepare('UPDATE retailers SET last_run_at = ?, last_ok_at = ?, run_requested = 0, fail_count = 0, paused_until = NULL WHERE id = ?').bind(at, at, r.retailer_id));
+      } else {
+        // Engel (403/429/CAPTCHA): mağaza duraklatılır; art arda engelde bekleme uzar (24 saat, 48, ... en çok 7 gün)
+        const hours = r.blocked ? Math.min(168, Math.max(1, +r.pause_hours || 24)) : 0;
+        stmts.push(env.DB.prepare(`UPDATE retailers SET last_run_at = ?, last_error_at = ?, last_error = ?, run_requested = 0, fail_count = fail_count + 1,
+            paused_until = CASE WHEN ? > 0 THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+' || MIN(168, ? * (fail_count + 1)) || ' hours') ELSE paused_until END WHERE id = ?`)
+          .bind(at, at, msg || 'Bilinmeyen hata', hours, hours, r.retailer_id));
+      }
+    }
+    // 60 günden eski tarama kayıtları silinir (yalnızca özet tablo; ürün ve fiyat verisine dokunulmaz)
+    stmts.push(env.DB.prepare("DELETE FROM scrape_runs WHERE started_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-60 days')"));
+    await env.DB.batch(stmts);
+    return json({ ok: true, saved: stmts.length - 1 });
+  }
+  // Panel: mağaza durumu, ürün sayıları ve son çalıştırmalar
+  if (what === 'status' && method === 'GET') {
+    const [rows, counts, runs] = await Promise.all([
+      retailers(env),
+      env.DB.prepare(`SELECT retailer_id, COUNT(*) AS offers, COUNT(DISTINCT product_id) AS products, SUM(last_error IS NOT NULL) AS errors,
+          MAX(checked_at) AS last_checked FROM offers GROUP BY retailer_id`).all(),
+      env.DB.prepare('SELECT * FROM scrape_runs ORDER BY id DESC LIMIT 60').all(),
+    ]);
+    const by = new Map(counts.results.map((c) => [c.retailer_id, c]));
+    return json({
+      now: iso,
+      github: !!env.GITHUB_TOKEN,
+      retailers: rows.map((r) => ({ ...r, config: r.config ? JSON.parse(r.config) : null, ...(by.get(r.id) || { offers: 0, products: 0, errors: 0 }) })),
+      runs: runs.results,
+    });
+  }
+  // "Şimdi çalıştır": mağaza bir sonraki saatlik turda taranır. GITHUB_TOKEN ayarlıysa tarama hemen başlatılır.
+  if (what === 'run' && method === 'POST') {
+    const id = arg && arg !== 'all' ? arg : null;
+    const r = await env.DB.prepare(`UPDATE retailers SET run_requested = 1, paused_until = NULL WHERE scrape = 1 ${id ? 'AND id = ?' : ''}`).bind(...(id ? [id] : [])).run();
+    let started = false, note = null;
+    if (env.GITHUB_TOKEN) {
+      const repo = env.GITHUB_REPO || 'volkandoyran/internet-sitesi';
+      const g = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/scrape.yml/dispatches`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'user-agent': 'ucfiyat-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({ ref: 'main', inputs: id ? { magaza: id } : {} }),
+      });
+      started = g.status === 204;
+      if (!started) note = 'GitHub tetiklenemedi (' + g.status + '); bir sonraki saatlik turda çalışacak.';
+    }
+    return json({ ok: true, queued: r.meta?.changes ?? null, started, note });
+  }
+  return fail('Bulunamadı', 404);
 }
 
 async function loadAllAdmin(env) {

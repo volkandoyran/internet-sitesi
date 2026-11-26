@@ -1,13 +1,21 @@
 name: Fiyatları güncelle
 
+# Kendi veri toplama motorumuz (scraper/). Ücretli servis kullanmaz; depo herkese açık olduğu için GitHub Actions ücretsizdir.
+# Saatte bir uyanır, sitedeki plana bakar: yalnızca zamanı gelen (panelde seçilen sıklık) ya da panelden
+# "Şimdi çalıştır" denen mağazalar taranır. Zamanı gelen yoksa iş ~20 saniyede biter.
+
 on:
   schedule:
-    - cron: '0 3,9,15,21 * * *'   # günde 4 kez (Türkiye saatiyle 06, 12, 18, 24)
+    - cron: '17 * * * *'   # saatte bir (asıl sıklık mağaza başına panelden ayarlanır, varsayılan 6 saat)
   workflow_dispatch:
     inputs:
       magaza:
-        description: 'Yalnızca bu mağaza (boş = hepsi)'
+        description: 'Yalnızca bu mağaza (boş = zamanı gelenler)'
         required: false
+      hepsi:
+        description: 'Zamanı gelmemiş mağazaları da tara (1 = evet)'
+        required: false
+        default: '0'
       yeni_limit:
         description: 'Mağaza başına yeni ürün sayfası sınırı'
         required: false
@@ -16,9 +24,10 @@ on:
         description: 'Deneme: siteye gönderme (1 = evet)'
         required: false
         default: '0'
-      firecrawl_limit:
-        description: 'Bu çalıştırmada en fazla kaç Firecrawl kredisi (boş = sitedeki ayar)'
+      ornek:
+        description: 'Denemede mağaza başına en fazla kaç sayfa (0 = sınırsız)'
         required: false
+        default: '0'
 
 concurrency: { group: fiyat, cancel-in-progress: false }
 
@@ -30,21 +39,40 @@ jobs:
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       SITE_URL: ${{ vars.SITE_URL }}
       MAGAZA: ${{ inputs.magaza }}
+      HEPSI: ${{ inputs.hepsi }}
       YENI_LIMIT: ${{ inputs.yeni_limit }}
       KURU: ${{ inputs.kuru }}
-      FIRECRAWL_LIMIT: ${{ inputs.firecrawl_limit }}
+      ORNEK: ${{ inputs.ornek }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       - name: Ayarları kontrol et
         run: |
-          if [ -z "$SITE_URL" ] || [ -z "$ADMIN_PASSWORD" ]; then
+          if [ "$KURU" != "1" ] && { [ -z "$SITE_URL" ] || [ -z "$ADMIN_PASSWORD" ]; }; then
             echo "::error::Depo ayarlarında SITE_URL değişkeni ve ADMIN_PASSWORD gizli anahtarı gerekli. README'deki kurulum adımlarına bakın."
             exit 1
           fi
-      - name: Mağaza kataloglarını tara (yeni ürünler + fiyatlar)
-        run: node scraper/katalog.mjs
+      - run: npm ci --no-audit --no-fund
+      - name: Zamanı gelen mağazalar
+        id: plan
+        run: node scraper/plan.mjs
+      - name: Site haritası önbelleği
+        if: steps.plan.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .cache/scraper
+          key: sitemap-${{ github.run_id }}
+          restore-keys: sitemap-
+      - name: Playwright (yalnızca JavaScript ile yüklenen mağaza varsa)
+        if: steps.plan.outputs.run == 'true' && steps.plan.outputs.render == 'true'
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps --only-shell chromium
+      - name: Mağazaları tara (yeni ürünler + fiyatlar)
+        if: steps.plan.outputs.run == 'true'
+        # Node bellek sınırı: Actions makinesini zorlamasın
+        run: node --max-old-space-size=1024 scraper/katalog.mjs
       - name: Elle eklenen bağlantıların fiyatlarını çek
-        if: inputs.kuru != '1'
+        if: inputs.kuru != '1' && steps.plan.outputs.manual == 'true'
         run: node scraper/scrape.mjs

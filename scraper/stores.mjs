@@ -67,37 +67,60 @@ export const STORES = {
   },
 };
 
-// Bot korumasıyla GitHub'ı engelleyen mağazalar: sayfalar Firecrawl üzerinden alınır (site/api/admin/firecrawl).
-// Ürün bağlantıları Firecrawl "map" ile, aranan kelimeye göre bulunur (her çağrı 1 kredi).
-// product: ürün sayfası bağlantısı deseni (bilinmiyorsa addan karar verilir).
-const SEARCH = {
-  TR: ['laptop', 'telefon', 'tablet', 'ekran-karti', 'islemci', 'monitor', 'masaustu'],
-  GR: ['laptop', 'kinita', 'tablet', 'kartes-grafikon', 'epexergastes', 'othones', 'smartphone'],
-  BG: ['laptop', 'smartfon', 'tablet', 'videokarti', 'procesori', 'monitori', 'kompyutri'],
+// Diğer mağazalar: site haritaları robots.txt'den bulunur, ürün bağlantısı deseni ve addan sınıflandırma ile seçilir.
+// Bu mağazaların çoğu GitHub sunucularından gelen istekleri bot korumasıyla engelliyor (403 / doğrulama sayfası).
+// Motor engeli aşmaya çalışmaz: mağaza duraklatılır, panelde "engellendi" görünür ve bekleme bitince yeniden denenir.
+// (Önceden bu mağazalar ücretli Firecrawl ile alınıyordu; 26 Kasım 2026'da kaldırıldı.)
+// product: ürün sayfası bağlantısı deseni (bilinmiyorsa yalnızca addan karar verilir).
+const generic = (site, product, extra = {}) => ({ site, sitemapsFromRobots: site + '/robots.txt', product, newLimit: 150, refreshLimit: 300, delayMs: 1500, ...extra });
+const OTHER = {
+  vatan: generic('https://www.vatanbilgisayar.com', /\.html$/),
+  teknosa: generic('https://www.teknosa.com', /-p-\d+/),
+  'mediamarkt-tr': generic('https://www.mediamarkt.com.tr', /\/product\//),
+  itopya: generic('https://www.itopya.com'),
+  incehesap: generic('https://www.incehesap.com', /-fiyati-\d+/),
+  sinerji: generic('https://www.sinerji.gen.tr', /-p-\d+/),
+  plaisio: generic('https://www.plaisio.gr'),
+  kotsovolos: generic('https://www.kotsovolos.gr'),
+  public: generic('https://www.public.gr', /\/product\//),
+  'mediamarkt-gr': generic('https://www.mediamarkt.gr', /\/product\//),
+  cosmodata: generic('https://www.cosmodata.gr'),
+  // Technopolis Angular ile çalışır: fiyat sayfa yüklendikten sonra gelir, Playwright gerekir
+  technopolis: generic('https://www.technopolis.bg', /\/p\/\d+/, { render: true }),
+  ardes: generic('https://ardes.bg', /\/product\//),
+  'desktop-bg': generic('https://desktop.bg'),
+  'laptop-bg': generic('https://www.laptop.bg'),
+  plasico: generic('https://plasico.bg'),
 };
-const fc = (country, site, product) => ({ firecrawl: true, country, site, product, search: SEARCH[country], currency: country === 'TR' ? 'TRY' : 'EUR' });
-export const FC_STORES = {
-  vatan: fc('TR', 'https://www.vatanbilgisayar.com', /\.html$/),
-  teknosa: fc('TR', 'https://www.teknosa.com', /-p-\d+/),
-  'mediamarkt-tr': fc('TR', 'https://www.mediamarkt.com.tr', /\/product\//),
-  itopya: fc('TR', 'https://www.itopya.com'),
-  incehesap: fc('TR', 'https://www.incehesap.com', /-fiyati-\d+/),
-  sinerji: fc('TR', 'https://www.sinerji.gen.tr', /-p-\d+/),
-  plaisio: fc('GR', 'https://www.plaisio.gr'),
-  kotsovolos: fc('GR', 'https://www.kotsovolos.gr'),
-  public: fc('GR', 'https://www.public.gr', /\/product\//),
-  'mediamarkt-gr': fc('GR', 'https://www.mediamarkt.gr', /\/product\//),
-  cosmodata: fc('GR', 'https://www.cosmodata.gr'),
-  technopolis: fc('BG', 'https://www.technopolis.bg', /\/p\/\d+/),
-  ardes: fc('BG', 'https://ardes.bg', /\/product\//),
-  'desktop-bg': fc('BG', 'https://desktop.bg'),
-  'laptop-bg': fc('BG', 'https://www.laptop.bg'),
-  plasico: fc('BG', 'https://plasico.bg'),
-};
-for (const cfg of Object.values(FC_STORES)) {
+for (const [id, cfg] of Object.entries(OTHER)) {
   cfg.accept = (u) => {
     if (!u.startsWith(cfg.site) || /\.(jpe?g|png|webp|pdf|xml)(\?|$)/i.test(u)) return false;
     if (cfg.product && !cfg.product.test(u)) return false;
     return classify(slugText(u)) !== null;
   };
+  STORES[id] = cfg;
+}
+
+// Panelden girilen adaptör ayarı (retailers.config) koddaki tanımla birleştirilir; kodda olmayan yeni mağaza
+// yalnızca bu ayarla da taranabilir. Ayar: { sitemaps, robotsSitemaps, urlPattern, render, selectors, currency, newLimit, refreshLimit, delayMs }
+export function adapterFor(retailer) {
+  const code = STORES[retailer.id] || {};
+  const c = retailer.config || {};
+  const cfg = { ...code };
+  if (c.sitemaps?.length) cfg.sitemaps = c.sitemaps;
+  if (c.robotsSitemaps || (!cfg.sitemaps && !cfg.sitemapsFromRobots && retailer.site)) {
+    if (retailer.site) cfg.sitemapsFromRobots = retailer.site.replace(/\/$/, '') + '/robots.txt';
+  }
+  for (const k of ['render', 'selectors', 'newLimit', 'refreshLimit', 'delayMs']) if (c[k] != null) cfg[k] = c[k];
+  cfg.currency = c.currency || code.currency || retailer.currency || 'EUR';
+  if (c.urlPattern) {
+    const re = new RegExp(c.urlPattern);
+    const site = (retailer.site || '').replace(/\/$/, '');
+    cfg.accept = (u) => (!site || u.startsWith(site)) && re.test(u) && !/\.(jpe?g|png|webp|pdf|xml)(\?|$)/i.test(u) && classify(slugText(u)) !== null;
+  } else if (!cfg.accept) {
+    const site = (retailer.site || '').replace(/\/$/, '');
+    cfg.accept = (u) => (!site || u.startsWith(site)) && !/\.(jpe?g|png|webp|pdf|xml)(\?|$)/i.test(u) && classify(slugText(u)) !== null;
+  }
+  cfg.hasSource = !!(cfg.sitemaps?.length || cfg.sitemapsFromRobots);
+  return cfg;
 }

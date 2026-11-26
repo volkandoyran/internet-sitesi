@@ -9,6 +9,7 @@
     "check": "wrangler deploy --dry-run"
   },
   "devDependencies": {
+    "cheerio": "^1.2.0",
     "wrangler": "4.166.0"
   }
 }

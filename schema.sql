@@ -7,7 +7,17 @@ CREATE TABLE IF NOT EXISTS retailers (
   site      TEXT NOT NULL,
   currency  TEXT NOT NULL,
   active    INTEGER NOT NULL DEFAULT 1,
-  scrape    INTEGER NOT NULL DEFAULT 1
+  scrape    INTEGER NOT NULL DEFAULT 1,
+  -- Veri toplama motoru (scraper/): sıklık, adaptör ayarı ve son durum
+  interval_hours INTEGER NOT NULL DEFAULT 6,  -- kaç saatte bir taransın
+  config        TEXT,             -- JSON: site haritaları, bağlantı deseni, CSS seçicileri, render (Playwright)
+  run_requested INTEGER NOT NULL DEFAULT 0,  -- 1: panelden "Şimdi çalıştır" istendi
+  last_run_at   TEXT,
+  last_ok_at    TEXT,
+  last_error_at TEXT,
+  last_error    TEXT,
+  paused_until  TEXT,             -- 403/429/CAPTCHA sonrası bekleme (engel aşılmaya çalışılmaz)
+  fail_count    INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -27,6 +37,7 @@ CREATE TABLE IF NOT EXISTS products (
   match_key   TEXT,            -- mağazalar arası eşleştirme: üretici parça kodu ya da model kodu
   mkeys       TEXT,            -- tüm eşleştirme anahtarları, boşlukla ayrılmış (" K1 K2 "); tarayıcı hesaplar
   specs       TEXT,            -- mağaza sayfasından okunan teknik özellikler (JSON); tarayıcı doldurur
+  description TEXT,            -- mağaza sayfasındaki kısa açıklama (yoksa NULL)
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -41,7 +52,10 @@ CREATE TABLE IF NOT EXISTS offers (
   in_stock    INTEGER,
   manual      INTEGER NOT NULL DEFAULT 0,  -- 1: fiyat elle girildi, otomatik güncellenmez
   last_error  TEXT,
-  updated_at  TEXT
+  updated_at  TEXT,            -- son başarılı fiyat okuma
+  old_price   REAL,            -- mağazanın gösterdiği indirim öncesi fiyat (yoksa NULL)
+  store_category TEXT,         -- mağazanın kendi kategori yolu (breadcrumb)
+  checked_at  TEXT             -- son kontrol (fiyat değişmese de)
 );
 CREATE INDEX IF NOT EXISTS offers_product ON offers(product_id);
 CREATE INDEX IF NOT EXISTS offers_url ON offers(retailer_id, url);
@@ -50,9 +64,28 @@ CREATE INDEX IF NOT EXISTS products_match ON products(match_key);
 CREATE TABLE IF NOT EXISTS price_history (
   offer_id  INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
   price_eur REAL NOT NULL,
-  at        TEXT NOT NULL DEFAULT (datetime('now'))
+  at        TEXT NOT NULL DEFAULT (datetime('now')),
+  price     REAL,              -- mağazanın kendi para birimindeki fiyat
+  currency  TEXT
 );
 CREATE INDEX IF NOT EXISTS history_offer ON price_history(offer_id);
+
+-- Her mağaza taramasının özeti (admin "Veri toplama" sekmesi)
+CREATE TABLE IF NOT EXISTS scrape_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  retailer_id TEXT NOT NULL,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  ok          INTEGER NOT NULL DEFAULT 0,
+  blocked     INTEGER NOT NULL DEFAULT 0,
+  pages       INTEGER NOT NULL DEFAULT 0,
+  added       INTEGER NOT NULL DEFAULT 0,
+  changed     INTEGER NOT NULL DEFAULT 0,
+  unchanged   INTEGER NOT NULL DEFAULT 0,
+  errors      INTEGER NOT NULL DEFAULT 0,
+  message     TEXT
+);
+CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at);
 
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
