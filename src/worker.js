@@ -1,7 +1,9 @@
-// Worker giriş noktası: /api/* ve /ads.txt burada işlenir, diğer her şey public/ klasöründen sunulur.
+// Worker giriş noktası: tüm istekler önce buradan geçer (site yalnızca sahibine açık, bkz. giris.js).
+// /api/* ve /ads.txt burada işlenir, diğer her şey public/ klasöründen sunulur.
 // Ana sayfaya admin panelinden girilen <head> kodu (ör. AdSense) eklenir.
 import { handleApi } from './api.js';
-import { matchedPage, specsListPage, productPage, sitemap } from './pages.js';
+import { matchedPage, specsListPage, productPage } from './pages.js';
+import { kapi, noindex } from './giris.js';
 import SCHEMA from '../schema.sql';
 
 // Tablolar yoksa schema.sql'i çalıştırır (ilk yayından sonraki ilk istekte bir kez)
@@ -44,24 +46,33 @@ async function setting(env, key) {
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    await ensureSchema(env);
-    if (url.pathname.startsWith('/api/')) {
-      return handleApi(request, env, url.pathname.slice(5).split('/').filter(Boolean));
-    }
-    if (url.pathname === '/ads.txt') {
-      return new Response(await setting(env, 'ads_txt'), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
-    }
-    if (url.pathname === '/sitemap.xml') return sitemap(env);
-    let res;
-    const path = url.pathname.replace(/\/+$/, '') || '/';
-    if (path === '/eslesen') res = await matchedPage(env);
-    else if (path === '/ozellikler') res = await specsListPage(env);
-    else if (path.startsWith('/urun/')) res = await productPage(env, safeDecode(path.slice(6)), url.origin);
-    else res = await env.ASSETS.fetch(request);
-    if (!(res.headers.get('content-type') || '').includes('text/html') || url.pathname.startsWith('/admin')) return res;
-    const code = await setting(env, 'ad_head');
-    if (!code) return res;
-    return new HTMLRewriter().on('head', { element(el) { el.append(code, { html: true }); } }).transform(res);
+    return noindex(await handle(request, env));
   },
 };
+
+async function handle(request, env) {
+  const url = new URL(request.url);
+  await ensureSchema(env);
+  // Giriş kapısı. Giriş sayfasına yalnızca Search Console doğrulama etiketi eklenir (site sahipliği korunur).
+  const dogrulama = ((await setting(env, 'ad_head')).match(/<meta[^>]+google-site-verification[^>]*>/gi) || []).join('\n');
+  const engel = await kapi(request, env, url, dogrulama);
+  if (engel) return engel;
+  if (url.pathname.startsWith('/api/')) {
+    return handleApi(request, env, url.pathname.slice(5).split('/').filter(Boolean));
+  }
+  if (url.pathname === '/ads.txt') {
+    return new Response(await setting(env, 'ads_txt'), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  }
+  // Site özel: arama motorlarına site haritası verilmez
+  if (url.pathname === '/sitemap.xml') return new Response('Bulunamadı', { status: 404 });
+  let res;
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/eslesen') res = await matchedPage(env);
+  else if (path === '/ozellikler') res = await specsListPage(env);
+  else if (path.startsWith('/urun/')) res = await productPage(env, safeDecode(path.slice(6)), url.origin);
+  else res = await env.ASSETS.fetch(request);
+  if (!(res.headers.get('content-type') || '').includes('text/html') || url.pathname.startsWith('/admin')) return res;
+  const code = await setting(env, 'ad_head');
+  if (!code) return res;
+  return new HTMLRewriter().on('head', { element(el) { el.append(code, { html: true }); } }).transform(res);
+}
