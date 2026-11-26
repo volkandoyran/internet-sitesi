@@ -6,6 +6,7 @@
 //    çıkışta silinir, admin şifresi değişince tüm oturumlar kendiliğinden geçersiz olur.
 //  - Hata yanıtı: kullanıcıya genel mesaj ve takip kodu; teknik ayrıntı yalnızca Worker günlüğüne yazılır.
 
+import { jwtMi, githubActionsMi } from './oidc.js';
 const enc = new TextEncoder();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 const sha = async (s) => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)));
@@ -91,8 +92,10 @@ export async function oturumKapat(env, request) {
 // Bearer: GitHub Actions tarayıcısı (ADMIN_PASSWORD). Çerez: paneldeki oturum.
 export async function adminMi(request, env) {
   const pw = env.ADMIN_PASSWORD;
-  if (!pw) return { ok: false };
   const bearer = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  // GitHub Actions: şifresiz, GitHub'ın imzaladığı kimlik belirteci (src/oidc.js)
+  if (jwtMi(bearer)) return { ok: await githubActionsMi(bearer, env), via: 'bearer' };
+  if (!pw) return { ok: false };
   if (bearer) return { ok: await esit(bearer, pw), via: 'bearer' };
   const id = cerez(request, ADMIN_COOKIE);
   if (!/^[0-9a-f]{64}$/.test(id)) return { ok: false };
