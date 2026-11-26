@@ -56,23 +56,31 @@ function girisSayfasi(hedef, hata, basKodu, status = 200) {
 <title>Giriş · Üçfiyat</title>
 ${basKodu}
 <style>
-  :root { color-scheme: light dark; --bg: #f3f5f8; --kart: #fff; --yazi: #16202a; --soluk: #5b6773; --cizgi: #d5dbe2; --vurgu: #16202a; --vurgu-yazi: #fff; --hata: #b42318; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #10161d; --kart: #18212b; --yazi: #e8edf2; --soluk: #9aa6b2; --cizgi: #2b3742; --vurgu: #e8edf2; --vurgu-yazi: #10161d; --hata: #ff8a80; } }
+  :root { color-scheme: light dark; --bg: #f3f5f8; --kart: #fff; --yazi: #131b25; --soluk: #566272; --cizgi: #c6cfd9; --vurgu: #131b25; --vurgu-yazi: #fff; --hata: #b42318; --odak: #1d5fd0; --isaret: #ffd84d; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f151c; --kart: #17202a; --yazi: #e9eef3; --soluk: #9eabb9; --cizgi: #3a4757; --vurgu: #e9eef3; --vurgu-yazi: #0f151c; --hata: #ff8a80; --odak: #6ea2ff; } }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--yazi);
          font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  form { width: 100%; max-width: 360px; background: var(--kart); border: 1px solid var(--cizgi); border-radius: 14px; padding: 24px; }
-  h1 { margin: 0 0 4px; font-size: 22px; }
-  p { margin: 0 0 18px; color: var(--soluk); font-size: 14px; }
-  label { display: block; font-size: 14px; margin-bottom: 6px; }
-  input { width: 100%; font-size: 16px; padding: 12px; border-radius: 10px; border: 1px solid var(--cizgi); background: transparent; color: inherit; }
-  button { width: 100%; margin-top: 14px; font-size: 16px; font-weight: 600; padding: 12px; border: 0; border-radius: 10px; background: var(--vurgu); color: var(--vurgu-yazi); cursor: pointer; }
-  .hata { color: var(--hata); font-size: 14px; margin: 10px 0 0; }
+  form { width: 100%; max-width: 380px; background: var(--kart); border: 1px solid var(--cizgi); border-radius: 16px; padding: 28px 24px 24px;
+         box-shadow: 0 1px 2px rgba(19,27,37,.05), 0 8px 24px -12px rgba(19,27,37,.18); }
+  .logo { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; font-weight: 800; font-size: 20px; letter-spacing: -.01em; }
+  .logo span { display: grid; gap: 2px; width: 22px; }
+  .logo i { display: block; height: 5px; border-radius: 1.5px; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  p { margin: 0 0 18px; color: var(--soluk); font-size: 14.5px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  input { width: 100%; font: inherit; font-size: 16px; min-height: 50px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--cizgi); background: transparent; color: inherit; }
+  input:focus { outline: none; border-color: var(--yazi); box-shadow: 0 0 0 4px color-mix(in srgb, var(--odak) 22%, transparent); }
+  button { width: 100%; margin-top: 14px; font: inherit; font-size: 16px; font-weight: 700; min-height: 50px; border: 0; border-radius: 12px; background: var(--vurgu); color: var(--vurgu-yazi); cursor: pointer; }
+  button:hover { opacity: .9; }
+  button:focus-visible { outline: 3px solid var(--odak); outline-offset: 2px; }
+  .hata { color: var(--hata); font-size: 14px; margin: 12px 0 0; }
 </style>
 </head>
 <body>
 <form method="post" action="/giris">
-  <h1>Üçfiyat</h1>
+  <div class="logo" aria-hidden="true"><span><i style="background:#c8102e"></i><i style="background:#1560bd;width:72%"></i><i style="background:#00875a;width:86%"></i></span>Üçfiyat</div>
+  <h1>Giriş yap</h1>
   <p>Bu site özeldir. Devam etmek için şifreni gir.</p>
   <label for="sifre">Şifre</label>
   <input id="sifre" name="sifre" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>

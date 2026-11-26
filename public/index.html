@@ -20,133 +20,172 @@
   <meta property="og:image" content="https://ucfiyat.vitrin-web.workers.dev/icon-512.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5..112.5,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="notice" role="note"><b>Bilgi:</b> Üçfiyat yalnızca fiyat karşılaştırma sitesidir, <b>satış yapmaz</b>. Ürünü almak için mağazanın kendi sitesine yönlendirilirsiniz.</div>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 10v9.5h16V10M3.5 10 5 4.5h14l1.5 5.5zM10 19.5v-5h4v5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4zM3.5 7.5 12 11.5l8.5-4M12 11.5v9"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5M12 16.5v.01"/></symbol>
+    <symbol id="i-img" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="m3.5 16 5-5 4 4 2.5-2.5 5.5 5.5"/></symbol>
+  </svg>
+  <a class="skip" href="#main">İçeriğe geç</a>
+  <div class="notice" role="note"><b>Üçfiyat satış yapmaz.</b> Yalnızca fiyatları karşılaştırır; ürünü almak için mağazanın kendi sitesine yönlendirilirsiniz.</div>
   <header class="top">
     <a class="logo" href="/" aria-label="Üçfiyat ana sayfa">
       <span class="logo-mark" aria-hidden="true"><i class="tr"></i><i class="gr"></i><i class="bg"></i></span>
       Üçfiyat
     </a>
+    <nav class="site-nav" id="site-nav" aria-label="Sayfalar"><a href="/" aria-current="page">Fiyat ara</a><a href="/eslesen">Eşleşen modeller</a><a href="/ozellikler">Teknik özellikler</a></nav>
     <div class="cur" role="group" aria-label="Para birimi">
-      <button type="button" data-cur="EUR" aria-pressed="true">€</button>
-      <button type="button" data-cur="TRY" aria-pressed="false">₺</button>
+      <button type="button" data-cur="EUR" aria-pressed="true" aria-label="Euro">€</button>
+      <button type="button" data-cur="TRY" aria-pressed="false" aria-label="Türk lirası">₺</button>
     </div>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Menüyü aç">
+      <svg class="ic i-open" aria-hidden="true"><use href="#i-menu"/></svg><svg class="ic i-close" aria-hidden="true"><use href="#i-x"/></svg>
+    </button>
   </header>
-  <nav class="site-nav" aria-label="Sayfalar"><a href="/" aria-current="page">Fiyat ara</a><a href="/eslesen">Eşleşen modeller</a><a href="/ozellikler">Teknik özellikler</a></nav>
 
   <div class="ad-slot" data-slot="ad_top" hidden></div>
 
-  <main>
-    <section class="intro">
-      <h1>Aynı <span id="what">bilgisayar</span>,<br>üç ülkede kaça?</h1>
-      <p>Türkiye, Yunanistan ve Bulgaristan'da mağazası da olan satıcıların fiyatlarını yan yana görün. Model adı yazın ya da ihtiyacınızı ve bütçenizi seçin. Fiyata dokunursanız ürünü satan mağazanın sayfası açılır.</p>
+  <main id="main">
+    <section class="hero" aria-labelledby="baslik">
+      <h1 id="baslik">Aynı <span id="what">bilgisayar</span> üç ülkede kaça?</h1>
+      <p class="lead">Türkiye, Yunanistan ve Bulgaristan'da mağazası olan satıcıların fiyatlarını tek aramada yan yana görün, en ucuzunu seçin.</p>
+
+      <form id="search" class="search" autocomplete="off" role="search">
+        <input type="hidden" name="bolum" value="bilgisayar">
+        <div class="tabs" role="group" aria-label="Bölüm">
+          <button type="button" data-bolum="bilgisayar" aria-pressed="true">Bilgisayarlar</button>
+          <button type="button" data-bolum="parca" aria-pressed="false">Bilgisayar parçaları</button>
+          <button type="button" data-bolum="telefon" aria-pressed="false">Telefonlar</button>
+          <button type="button" data-bolum="tablet" aria-pressed="false">Tabletler</button>
+        </div>
+        <div class="q">
+          <div class="q-field">
+            <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+            <label for="q" class="sr">Model ya da özellik</label>
+            <input id="q" name="q" type="search" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Model ya da özellik yazın">
+          </div>
+          <button type="submit">Fiyatları bul</button>
+        </div>
+        <p class="quick" id="quick" hidden></p>
+        <details class="filter-box" open>
+          <summary><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>Filtreler <span class="filter-count" id="filter-count" hidden></span><svg class="ic i-down" aria-hidden="true"><use href="#i-down"/></svg></summary>
+          <div class="filters">
+            <label data-for="computer">Tür
+              <select name="type"></select>
+            </label>
+            <label data-for="part" hidden>Parça türü
+              <select name="category">
+                <option value="">Hepsi</option>
+                <optgroup label="Masaüstü ve ortak">
+                  <option value="cpu">İşlemci</option>
+                  <option value="gpu">Ekran kartı</option>
+                  <option value="ram">RAM (masaüstü ve laptop)</option>
+                  <option value="ssd">SSD</option>
+                  <option value="hdd">Sabit disk</option>
+                  <option value="anakart">Anakart</option>
+                  <option value="psu">Güç kaynağı</option>
+                  <option value="kasa">Kasa</option>
+                  <option value="monitor">Monitör</option>
+                </optgroup>
+                <optgroup label="Laptop parçaları">
+                  <option value="laptop-batarya">Laptop bataryası</option>
+                  <option value="laptop-adaptor">Laptop adaptörü</option>
+                  <option value="laptop-ekran">Laptop ekranı</option>
+                  <option value="laptop-klavye">Laptop klavyesi</option>
+                  <option value="laptop-fan">Laptop fanı</option>
+                </optgroup>
+              </select>
+            </label>
+            <label>En fazla bütçe
+              <span class="money"><input name="budget" type="number" min="0" step="50" inputmode="numeric" placeholder="Sınırsız"><b class="cur-sign">€</b></span>
+            </label>
+            <label data-for="computer device">En az RAM
+              <select name="ram"><option value="">Farketmez</option><option value="8">8 GB</option><option value="16">16 GB</option><option value="32">32 GB</option><option value="64">64 GB</option></select>
+            </label>
+            <label data-for="computer device">En az depolama
+              <select name="storage"><option value="">Farketmez</option><option value="256">256 GB</option><option value="512">512 GB</option><option value="1024">1 TB</option><option value="2048">2 TB</option></select>
+            </label>
+            <label data-for="computer">İşlemci
+              <select name="cpu">
+                <option value="">Farketmez</option>
+                <option value="30">Günlük işler (i3 / Ryzen 3 ve üstü)</option>
+                <option value="50">Orta (i5 / Ryzen 5 ve üstü)</option>
+                <option value="70">Güçlü (i7 / Ryzen 7 ve üstü)</option>
+                <option value="85">En üst (i9 / Ryzen 9)</option>
+              </select>
+            </label>
+            <label data-for="computer">Ekran kartı
+              <select name="gpu">
+                <option value="">Farketmez</option>
+                <option value="30">Hafif oyun (GTX 1650 / RTX 3050 ve üstü)</option>
+                <option value="55">Oyun (RTX 4060 ve üstü)</option>
+                <option value="66">Yüksek (RTX 4070 / 5070 ve üstü)</option>
+              </select>
+            </label>
+            <label>Bütçe hangi ülkede
+              <select name="country"><option value="">Herhangi biri</option><option value="TR">Türkiye</option><option value="GR">Yunanistan</option><option value="BG">Bulgaristan</option></select>
+            </label>
+            <div class="filter-acts"><button type="button" class="linkish" id="clear">Filtreleri temizle</button></div>
+          </div>
+        </details>
+      </form>
+
+      <ul class="facts">
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Yalnızca fiziksel mağazası da olan satıcılar</li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Fiyatlar mağaza sitelerinden otomatik güncellenir</li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>TL fiyatlar Avrupa Merkez Bankası kuruyla euroya çevrilir</li>
+      </ul>
     </section>
 
-    <nav class="tabs" aria-label="Bölümler">
-      <button type="button" data-bolum="bilgisayar" aria-pressed="true">Bilgisayarlar</button>
-      <button type="button" data-bolum="parca" aria-pressed="false">Bilgisayar parçaları</button>
-      <button type="button" data-bolum="telefon" aria-pressed="false">Telefonlar</button>
-      <button type="button" data-bolum="tablet" aria-pressed="false">Tabletler</button>
-    </nav>
-
-    <form id="search" class="search" autocomplete="off">
-      <input type="hidden" name="bolum" value="bilgisayar">
-      <div class="q">
-        <label for="q" class="sr">Model ya da özellik</label>
-        <input id="q" name="q" type="search" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ör. ThinkPad E14, MacBook Air M3 ya da “i7 16gb rtx 4060”">
-        <button type="submit">Fiyatları bul</button>
-      </div>
-      <details class="filter-box" open>
-      <summary>Filtreler</summary>
-      <div class="filters">
-        <label data-for="computer">Tür
-          <select name="type"></select>
-        </label>
-        <label data-for="part" hidden>Parça türü
-          <select name="category">
-            <option value="">Hepsi</option>
-            <optgroup label="Masaüstü ve ortak">
-              <option value="cpu">İşlemci</option>
-              <option value="gpu">Ekran kartı</option>
-              <option value="ram">RAM (masaüstü ve laptop)</option>
-              <option value="ssd">SSD</option>
-              <option value="hdd">Sabit disk</option>
-              <option value="anakart">Anakart</option>
-              <option value="psu">Güç kaynağı</option>
-              <option value="kasa">Kasa</option>
-              <option value="monitor">Monitör</option>
-            </optgroup>
-            <optgroup label="Laptop parçaları">
-              <option value="laptop-batarya">Laptop bataryası</option>
-              <option value="laptop-adaptor">Laptop adaptörü</option>
-              <option value="laptop-ekran">Laptop ekranı</option>
-              <option value="laptop-klavye">Laptop klavyesi</option>
-              <option value="laptop-fan">Laptop fanı</option>
-            </optgroup>
+    <section aria-labelledby="res-title">
+      <div class="res-bar">
+        <div>
+          <h2 id="res-title">Bilgisayarlar</h2>
+          <p class="count" id="res-count" aria-live="polite"></p>
+        </div>
+        <label class="sort">Sırala
+          <select id="sort">
+            <option value="">En düşük fiyat</option>
+            <option value="price-desc">En yüksek fiyat</option>
+            <option value="countries">Çok ülkede satılanlar önce</option>
+            <option value="gap">Ülkeler arası fark en büyük</option>
           </select>
-        </label>
-        <label>En fazla bütçe
-          <span class="money"><input name="budget" type="number" min="0" step="50" inputmode="numeric" placeholder="sınırsız"><b class="cur-sign">€</b></span>
-        </label>
-        <label data-for="computer device">RAM en az
-          <select name="ram"><option value="">Farketmez</option><option>8</option><option>16</option><option>32</option><option>64</option></select>
-        </label>
-        <label data-for="computer device">Depolama en az
-          <select name="storage"><option value="">Farketmez</option><option value="256">256 GB</option><option value="512">512 GB</option><option value="1024">1 TB</option><option value="2048">2 TB</option></select>
-        </label>
-        <label data-for="computer">İşlemci
-          <select name="cpu">
-            <option value="">Farketmez</option>
-            <option value="30">Günlük işler (i3 / Ryzen 3 ve üstü)</option>
-            <option value="50">Orta (i5 / Ryzen 5 ve üstü)</option>
-            <option value="70">Güçlü (i7 / Ryzen 7 ve üstü)</option>
-            <option value="85">En üst (i9 / Ryzen 9)</option>
-          </select>
-        </label>
-        <label data-for="computer">Ekran kartı
-          <select name="gpu">
-            <option value="">Farketmez</option>
-            <option value="30">Hafif oyun (GTX 1650 / RTX 3050 ve üstü)</option>
-            <option value="55">Oyun (RTX 4060 ve üstü)</option>
-            <option value="66">Yüksek (RTX 4070 / 5070 ve üstü)</option>
-          </select>
-        </label>
-        <label>Bütçe hangi ülkede
-          <select name="country"><option value="">Herhangi biri</option><option value="TR">Türkiye</option><option value="GR">Yunanistan</option><option value="BG">Bulgaristan</option></select>
         </label>
       </div>
-      </details>
-    </form>
-
-    <p id="note" class="note" hidden></p>
-    <ol id="results" class="results" aria-live="polite"></ol>
-    <div id="similar-wrap" hidden>
-      <h2 class="sub">Benzer özellikteki ürünler</h2>
-      <ol id="similar" class="results"></ol>
-    </div>
+      <p id="note" class="note" role="status" hidden></p>
+      <ol id="results" class="results" aria-busy="false"></ol>
+      <div id="similar-wrap" hidden>
+        <h2 class="sub">Benzer özellikteki ürünler</h2>
+        <ol id="similar" class="results"></ol>
+      </div>
+    </section>
   </main>
 
   <div class="ad-slot" data-slot="ad_bottom" hidden></div>
 
   <footer class="foot">
-    <p><b>Üçfiyat satış yapmaz.</b> Yalnızca Türkiye, Yunanistan ve Bulgaristan'daki mağazaların fiyatlarını karşılaştırır. "Mağazada gör" bağlantıları sizi ürünü satan mağazanın kendi sitesine götürür; satın alma, ödeme ve teslimat tamamen o mağaza ile aranızdadır.</p>
-    <p>Fiyatlar satıcı sitelerinden günde dört kez alınır, satın almadan önce satıcının sitesinden kontrol edin. Türk lirası fiyatlar Avrupa Merkez Bankası kuruyla euroya çevrilir. Bulgaristan fiyatları euro üzerindendir.</p>
-    <p id="rate"></p>
+    <div class="foot-in">
+      <div>
+        <a class="logo" href="/" aria-label="Üçfiyat ana sayfa"><span class="logo-mark" aria-hidden="true"><i class="tr"></i><i class="gr"></i><i class="bg"></i></span>Üçfiyat</a>
+        <p><b>Üçfiyat satış yapmaz.</b> "Mağazada gör" bağlantıları sizi ürünü satan mağazanın sitesine götürür; satın alma, ödeme ve teslimat o mağaza ile aranızdadır.</p>
+        <p>Fiyatlar mağaza sitelerinden otomatik alınır; satın almadan önce mağazanın sitesinden kontrol edin. <span id="rate"></span></p>
+      </div>
+      <nav class="foot-nav" aria-label="Alt menü"><a href="/">Fiyat ara</a><a href="/eslesen">Eşleşen modeller</a><a href="/ozellikler">Teknik özellikler</a></nav>
+    </div>
   </footer>
-
-  <template id="row">
-    <li class="item">
-      <button class="head" type="button" aria-expanded="false">
-        <span class="name"></span>
-        <span class="specs"></span>
-      </button>
-      <div class="lanes"></div>
-      <div class="detail" hidden></div>
-    </li>
-  </template>
 
   <script type="module" src="/app.js"></script>
 </body>
