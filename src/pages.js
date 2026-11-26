@@ -44,7 +44,7 @@ const SPRITE = `
     <symbol id="i-img" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="m3.5 16 5-5 4 4 2.5-2.5 5.5 5.5"/></symbol>
   </svg>`;
 // Ürün görseli; yüklenemezse arkadaki yer tutucu ikon görünür (public/ui.js thumb() ile aynı)
-const thumb = (src, cls = 'thumb') => `<span class="${cls}">${ic('img')}${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" width="88" height="88" onerror="this.remove()">` : ''}</span>`;
+const thumb = (src, cls = 'thumb') => `<span class="${cls}">${ic('img')}${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" width="88" height="88">` : ''}</span>`;
 // "x saat önce" (sunucu saatine göre; sayfa 5 dakika önbellekte kalabilir)
 function ago(iso) {
   const t = Date.parse(iso || '');
@@ -342,7 +342,7 @@ export async function productPage(env, idPart, origin = SITE) {
   const similar = (await similarTo(env, p, 6)).map((x) =>
       `<a href="${productPath(x)}">${thumb(x.image)}<span class="mini-txt"><span>${esc(shortName(x.name))}</span><small><b>${money(x.best?.price_eur)}</b> · ${esc(x.best?.retailer || '')}</small></span></a>`).join('');
   const crumbs = `<nav class="crumbs" aria-label="Konum"><a href="/">Ana sayfa</a><span aria-hidden="true">/</span><a href="/?bolum=${BOLUM[p.type]}">${SECTION[p.type]}</a>${isPc(p) ? '<span aria-hidden="true">/</span><a href="/ozellikler">Teknik özellikler</a>' : ''}</nav>`;
-  const img = `<span class="p-noimg">${ic('img')}${p.image ? `<img src="${esc(p.image)}" alt="${esc(shortName(p.name))}" referrerpolicy="no-referrer" width="168" height="168" onerror="this.remove()">` : ''}</span>`;
+  const img = `<span class="p-noimg">${ic('img')}${p.image ? `<img src="${esc(p.image)}" alt="${esc(shortName(p.name))}" referrerpolicy="no-referrer" width="168" height="168">` : ''}</span>`;
   const body = `
     ${crumbs}
     <section class="product">

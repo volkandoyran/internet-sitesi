@@ -53,6 +53,9 @@
     .kv dd { margin: 0; overflow-wrap: anywhere; }
     .store .row select { width: auto; }
     .hist { font-size: 13px; }
+    .pager { justify-content: center; }
+    .rv { display: grid; gap: 6px; }
+    .rv h3 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
     @media (max-width: 560px) { .stores { grid-template-columns: 1fr; } td, th { padding: 5px 4px; } }
   </style>
 </head>
@@ -70,11 +73,13 @@
     <div id="app" hidden>
       <nav class="tabs" role="tablist">
         <button role="tab" data-tab="products" aria-selected="true">Ürünler ve fiyatlar</button>
+        <button role="tab" data-tab="review" aria-selected="false">İnceleme <span id="review-n" class="pill warn" hidden></span></button>
         <button role="tab" data-tab="scraper" aria-selected="false">Veri toplama</button>
         <button role="tab" data-tab="retailers" aria-selected="false">Satıcılar</button>
         <button role="tab" data-tab="ads" aria-selected="false">Reklamlar</button>
       </nav>
       <section id="tab-products" class="panel"></section>
+      <section id="tab-review" class="panel" hidden></section>
       <section id="tab-scraper" class="panel" hidden></section>
       <section id="tab-retailers" class="panel" hidden></section>
       <section id="tab-ads" class="panel" hidden></section>

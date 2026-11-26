@@ -54,7 +54,7 @@ document.querySelectorAll('[role=tab]').forEach((b) => b.addEventListener('click
 async function start() {
   $('#login').hidden = true; $('#app').hidden = false; $('#logout').hidden = false;
   [retailers, settings] = await Promise.all([api('retailers'), api('settings')]);
-  renderRetailers(); renderAds(); renderScraper(); await renderProducts();
+  renderRetailers(); renderAds(); renderScraper(); renderReview(); await renderProducts();
 }
 
 // ---------- Ürünler ----------
@@ -76,7 +76,7 @@ const formData = (el) => Object.fromEntries(FIELDS.map(([k]) => [k, el.querySele
 function retailerOptions(sel) {
   return retailers.map((r) => `<option value="${esc(r.id)}" ${r.id === sel ? 'selected' : ''}>${esc(r.country)} · ${esc(r.name)}</option>`).join('');
 }
-function offerRow(o, productId) {
+function offerRow(o, productId, many = false) {
   return `<tr data-id="${o.id || ''}" data-product="${productId}">
     <td><select name="retailer_id" ${o.id ? 'disabled' : ''}>${retailerOptions(o.retailer_id)}</select></td>
     <td><input name="url" type="url" placeholder="https://… ürün sayfası" value="${esc(o.url)}"></td>
@@ -85,36 +85,49 @@ function offerRow(o, productId) {
     <td><label class="muted"><input type="checkbox" name="manual" ${o.manual ? 'checked' : ''} style="width:auto"> Elle</label>
         <label class="muted"><input type="checkbox" name="in_stock" ${o.in_stock !== 0 ? 'checked' : ''} style="width:auto"> Stokta</label></td>
     <td class="muted">${o.price_eur != null ? o.price_eur + ' €' : ''}<br>${o.updated_at ? new Date(o.updated_at).toLocaleString('tr-TR') : ''}${o.last_error ? `<div class="err">${esc(o.last_error)}</div>` : ''}</td>
-    <td><div class="row"><button class="btn" data-act="save-offer" type="button">Kaydet</button>${o.id ? '<button class="btn ghost" data-act="del-offer" type="button">Sil</button>' : ''}</div></td>
+    <td><div class="row"><button class="btn" data-act="save-offer" type="button">Kaydet</button>${o.id ? '<button class="btn ghost" data-act="del-offer" type="button">Sil</button>' : ''}${o.id && many ? '<button class="btn ghost" data-act="split-offer" type="button" title="Yanlış eşleşme: bu mağazanın fiyatını ayrı bir ürün yap">Ayır</button>' : ''}</div></td>
   </tr>`;
 }
 
+// Ürün listesi sunucuda süzülür ve sayfalanır (5000+ ürün tek seferde yüklenmez)
+const plist = { q: '', f: '', sayfa: 1 };
 async function renderProducts() {
-  const products = await api('products');
+  const qs = new URLSearchParams(Object.entries(plist).filter(([, v]) => v !== '' && v != null));
+  const data = await api('products' + (qs.toString() ? '?' + qs : ''));
+  const products = data.items, st = data.stats;
   const el = $('#tab-products');
-  const noPrice = products.filter((p) => !p.offers.some((o) => o.price_eur != null)).length;
-  const errs = products.reduce((n, p) => n + p.offers.filter((o) => o.last_error).length, 0);
+  const pager = data.pages > 1 ? `<div class="row pager">
+      <button class="btn ghost" type="button" data-page="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>‹ Önceki</button>
+      <span class="muted">Sayfa ${data.page} / ${data.pages}</span>
+      <button class="btn ghost" type="button" data-page="${data.page + 1}" ${data.page >= data.pages ? 'disabled' : ''}>Sonraki ›</button></div>` : '';
   el.innerHTML = `
-    <p class="muted">${products.length} ürün · ${noPrice} üründe henüz fiyat yok · ${errs} bağlantıda fiyat çekme hatası · Kur: ${settings.rate_TRY ? `1 € = ${(+settings.rate_TRY).toFixed(2)} ₺` : 'henüz alınmadı'}</p>
+    <p class="muted">${st.products.toLocaleString('tr-TR')} ürün · ${st.no_price} üründe fiyat yok · ${st.errors} bağlantıda fiyat çekme hatası · ${st.review} fiyat incelemede · Kur: ${settings.rate_TRY ? `1 € = ${(+settings.rate_TRY).toFixed(2)} ₺` : 'henüz alınmadı'}</p>
     <details class="box p"><summary>Yeni ürün ekle</summary><form id="new-product">${productForm({ type: 'laptop' })}<div class="row" style="margin-top:12px"><button class="btn" type="submit">Ürünü ekle</button></div></form></details>
-    <input id="filter" type="search" placeholder="Ürünlerde ara">
+    <form id="pfilter" class="row" role="search">
+      <input id="filter" name="q" type="search" placeholder="Ad, marka ya da ürün no ile ara" value="${esc(plist.q)}" style="flex:1 1 220px;width:auto">
+      <select name="f" style="width:auto"><option value="">Tümü</option>${[['hata', 'Hatalı bağlantısı olan'], ['fiyatsiz', 'Fiyatı olmayan'], ['inceleme', 'İncelemedeki fiyat']].map(([v, l]) => `<option value="${v}" ${plist.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <button class="btn" type="submit">Ara</button></form>
+    <p class="muted">${data.total.toLocaleString('tr-TR')} sonuç</p>
     <div id="plist" class="panel">${products.map((p) => `
-      <details class="box p" data-id="${p.id}" data-name="${esc((p.name + ' ' + (p.brand || '')).toLowerCase())}">
-        <summary>${esc(p.name)} <span class="muted">${p.offers.length} satıcı${p.offers.some((o) => o.last_error) ? ' · hata var' : ''}</span></summary>
+      <details class="box p" data-id="${p.id}">
+        <summary>${esc(p.name)} <span class="muted">#${p.id} · ${p.offers.length} satıcı${p.offers.some((o) => o.last_error) ? ' · hata var' : ''}</span></summary>
         <form class="edit" style="margin-top:12px">${productForm(p)}
           <div class="row" style="margin-top:12px"><button class="btn" type="submit">Ürünü kaydet</button><button class="btn danger" type="button" data-act="del-product">Ürünü sil</button></div></form>
         <h3 style="font-size:15px;margin:18px 0 6px">Satıcı bağlantıları ve fiyatlar</h3>
-        <p class="muted">Ürün sayfası bağlantısını ekleyin, fiyat her gün otomatik çekilir. Otomatik çekilemeyen satıcılar için “Elle” kutusunu işaretleyip fiyatı kendiniz girin.</p>
+        <p class="muted">Ürün sayfası bağlantısını ekleyin, fiyat otomatik çekilir. Otomatik çekilemeyen satıcılar için “Elle” kutusunu işaretleyip fiyatı kendiniz girin.</p>
         <div class="scroll"><table><thead><tr><th>Satıcı</th><th>Bağlantı</th><th>Fiyat</th><th>Para</th><th></th><th>Son durum</th><th></th></tr></thead>
-        <tbody>${p.offers.map((o) => offerRow(o, p.id)).join('')}${offerRow({}, p.id)}</tbody></table></div>
+        <tbody>${p.offers.map((o) => offerRow(o, p.id, p.offers.length > 1)).join('')}${offerRow({}, p.id)}</tbody></table></div>
         <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-act="history">Fiyat geçmişini göster</button></div>
         <div class="hist"></div>
-      </details>`).join('') || '<p class="muted">Henüz ürün yok. “Yeni ürün ekle” ile başlayın.</p>'}</div>`;
+      </details>`).join('') || '<p class="muted">Sonuç yok.</p>'}</div>
+    ${pager}`;
 
-  $('#filter').addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase();
-    el.querySelectorAll('#plist > details').forEach((d) => (d.hidden = q && !d.dataset.name.includes(q)));
+  $('#pfilter').addEventListener('submit', (e) => {
+    e.preventDefault();
+    plist.q = e.target.q.value.trim(); plist.f = e.target.f.value; plist.sayfa = 1;
+    renderProducts();
   });
+  el.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => { plist.sayfa = +b.dataset.page; renderProducts().then(() => el.scrollIntoView()); }));
   $('#new-product').addEventListener('submit', async (e) => {
     e.preventDefault();
     await api('products', 'POST', formData(e.target));
@@ -151,6 +164,14 @@ async function renderProducts() {
       if (body.manual && body.price === '') return toast('Elle fiyat için fiyat girin.');
       await api('offers' + (tr.dataset.id ? '/' + tr.dataset.id : ''), tr.dataset.id ? 'PUT' : 'POST', body);
       toast('Fiyat kaydedildi'); renderProducts();
+    }
+    if (act === 'split-offer') {
+      if (!confirm('Bu mağaza bağlantısı ayrı bir ürüne taşınsın mı? (Otomatik eşleştirme ikisini yeniden birleştirmez.)')) return;
+      const r = await api(`offers/${tr.dataset.id}/ayir`, 'POST', {});
+      toast(`Ayrı ürün açıldı (#${r.product_id}); adını düzeltebilirsiniz`);
+      plist.q = String(r.product_id); plist.f = ''; plist.sayfa = 1; await renderProducts();
+      const d = $('#plist > details'); if (d) d.open = true;
+      return;
     }
     if (act === 'del-offer') {
       await api('offers/' + tr.dataset.id, 'DELETE'); toast('Bağlantı silindi'); tr.remove();
@@ -193,6 +214,42 @@ function historyTable({ offers, history }) {
     ${history.length ? `<div class="scroll"><table><thead><tr><th>Tarih</th><th>Mağaza</th><th>Fiyat</th><th>€</th></tr></thead><tbody>
       ${history.map((h) => { const o = byOffer.get(h.offer_id) || {}; return `<tr><td>${when(h.at.includes('T') ? h.at : h.at.replace(' ', 'T') + 'Z')}</td><td>${esc(o.retailer || '')}</td><td>${h.price != null ? money(h.price, h.currency) : '—'}</td><td>${money(h.price_eur, 'EUR')}</td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="muted">Henüz kayıt yok.</p>'}`;
+}
+
+// ---------- İnceleme ----------
+// Sitede gösterilmeyen şüpheli fiyatlar, bekleyen fiyat değişimleri ve okunamayan bağlantılar tek listede
+const KIND = { dogrulanmadi: ['warn', 'Doğrulanmadı (sitede gizli)'], bekliyor: ['warn', 'Fiyat değişimi bekliyor'], hata: ['', 'Okunamıyor'] };
+async function renderReview() {
+  const el = $('#tab-review');
+  let rows;
+  try { rows = await api('review'); } catch { el.innerHTML = '<p class="err">İnceleme listesi alınamadı.</p>'; return; }
+  const open = rows.filter((r) => r.kind !== 'hata').length;
+  const badge = $('#review-n'); badge.hidden = !open; badge.textContent = open;
+  el.innerHTML = `<p class="muted">Şüpheli fiyatlar onaylanana ya da bir sonraki taramada doğrulanana kadar sitede gösterilmez. Okunamayan bağlantının fiyatı 3 gün sonra siteden kalkar; sayfa kaldırılmışsa (404) bağlantı kendiliğinden silinir.</p>
+    ${rows.length ? `<div class="stores">${rows.map((r) => `<div class="box rv" data-id="${r.id}">
+      <div class="row" style="justify-content:space-between"><span class="pill ${KIND[r.kind][0]}">${KIND[r.kind][1]}</span><span class="muted">${esc(r.country)} · ${esc(r.retailer)}</span></div>
+      <h3>${esc(r.product)} <span class="muted">#${r.product_id}</span></h3>
+      <dl class="kv"><dt>Fiyat</dt><dd>${money(r.price, r.currency)}${r.pending_price != null ? ` → <b>${money(r.pending_price, r.currency)}</b>` : ''}</dd>
+        ${r.others_min_eur ? `<dt>Diğer mağazalar</dt><dd>en düşük ${money(r.others_min_eur, 'EUR')}</dd>` : ''}
+        <dt>Son kontrol</dt><dd>${when(r.checked_at || r.updated_at)}</dd>
+        ${r.last_error ? `<dt>Durum</dt><dd class="err">${esc(r.last_error)}</dd>` : ''}</dl>
+      <div class="row">${r.kind !== 'hata' ? '<button class="btn" type="button" data-rv="onayla">Onayla</button>' : ''}${r.kind === 'bekliyor' ? '<button class="btn ghost" type="button" data-rv="reddet">Reddet</button>' : ''}
+        ${r.url ? `<a class="btn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Mağazada gör</a>` : ''}
+        <button class="btn ghost" type="button" data-rv="urun">Ürüne git</button></div>
+    </div>`).join('')}</div>` : '<p class="muted">İncelenecek bir şey yok.</p>'}`;
+  el.onclick = async (e) => {
+    const act = e.target.dataset.rv; if (!act) return;
+    const box = e.target.closest('[data-id]');
+    if (act === 'urun') {
+      plist.q = String(rows.find((r) => r.id === +box.dataset.id).product_id); plist.f = ''; plist.sayfa = 1;
+      document.querySelector('[data-tab=products]').click(); await renderProducts();
+      const d = $('#plist > details'); if (d) d.open = true;
+      return;
+    }
+    e.target.disabled = true;
+    try { await api(`offers/${box.dataset.id}/${act}`, 'POST', {}); toast(act === 'onayla' ? 'Fiyat onaylandı' : 'Fiyat değişimi reddedildi'); renderReview(); }
+    catch { e.target.disabled = false; }
+  };
 }
 
 // ---------- Veri toplama ----------

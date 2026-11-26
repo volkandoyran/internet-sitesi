@@ -10,7 +10,7 @@ export const ic = (name, cls = '') => `<svg class="ic ${cls}" aria-hidden="true"
 // alt metni boş: ürün adı hemen yanında yazılı, ekran okuyucu aynı adı iki kez okumasın.
 export function thumb(src, cls = 'thumb') {
   return `<span class="${cls}">${ic('img')}${src
-    ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" width="88" height="88" onerror="this.remove()">`
+    ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" width="88" height="88">`
     : ''}</span>`;
 }
 
@@ -39,3 +39,9 @@ if (btn && nav) {
   document.addEventListener('click', (e) => { if (!e.target.closest('.top')) set(false); });
   matchMedia('(min-width: 761px)').addEventListener('change', (m) => { if (m.matches) set(false); });
 }
+
+// Yüklenemeyen ürün görseli kaldırılır, arkasındaki ikon görünür. (Satır içi onerror yerine: güvenlik başlığı
+// CSP satır içi betiklere izin vermez.) Betik yüklenmeden önce hata vermiş görseller de bir kez taranır.
+document.addEventListener('error', (e) => { if (e.target instanceof HTMLImageElement) e.target.remove(); }, true);
+const kirikGorseller = () => document.querySelectorAll('img').forEach((im) => { if (im.complete && !im.naturalWidth && im.getAttribute('src')) im.remove(); });
+if (document.readyState === 'complete') kirikGorseller(); else addEventListener('load', kirikGorseller);

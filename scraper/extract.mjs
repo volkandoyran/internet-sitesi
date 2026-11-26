@@ -5,7 +5,9 @@ import { load as cheerioLoad } from 'cheerio';
 
 export function parseNumber(raw) {
   if (raw == null) return null;
-  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : null;
+  // Eksi işaretli değer fiyat değildir ("-500 TL" 500 sanılmasın)
+  if (/^[^\d]*[-−–]\s*\d/.test(String(raw))) return null;
   // Baştaki/sondaki ayırıcılar atılır ("649,90 лв." sonundaki nokta ondalık sanılmasın)
   let s = String(raw).replace(/[^\d.,]/g, '').replace(/^[.,]+|[.,]+$/g, '');
   if (!s) return null;

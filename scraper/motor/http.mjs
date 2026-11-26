@@ -16,6 +16,8 @@ export const BOT = 'UcfiyatBot';
 export const UA = `${BOT}/1.0 (+https://github.com/volkandoyran/internet-sitesi; price comparison)`;
 const HEADERS = { 'user-agent': UA, 'accept-language': 'tr,el;q=0.8,bg;q=0.7,en;q=0.5', accept: 'text/html,application/xhtml+xml,application/xml' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Üstel geri çekilme + rastgele sapma: 1. tekrar ~2 sn, 2. ~4 sn, 3. ~8 sn (en çok 60 sn)
+export const backoff = (attempt, base = 2000, rnd = Math.random()) => Math.min(60000, base * 2 ** (attempt - 1)) + Math.round(rnd * 1000);
 
 export class EngelHatasi extends Error {
   constructor(message, status) { super(message); this.name = 'EngelHatasi'; this.status = status; }
@@ -123,7 +125,7 @@ export class Getirici {
     }
     let lastErr;
     for (let attempt = 0; attempt <= retries; attempt++) {
-      if (attempt) { this.stats.retries++; await sleep(2000 * attempt + Math.random() * 1000); }
+      if (attempt) { this.stats.retries++; await sleep(backoff(attempt)); }
       await this.waitTurn(url, delay);
       try {
         this.count(url);

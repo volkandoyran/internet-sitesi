@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS products (
   specs       TEXT,            -- mağaza sayfasından okunan teknik özellikler (JSON); tarayıcı doldurur
   description TEXT,            -- mağaza sayfasındaki kısa açıklama (yoksa NULL)
   gtin        TEXT,            -- barkod (EAN/UPC, sağlama basamağı doğrulanmış); en güçlü eşleştirme anahtarı
+  split_from  INTEGER,         -- panelde elle ayrıldığı ürün (bu ikisi otomatik birleştirilmez)
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
