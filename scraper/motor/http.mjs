@@ -11,7 +11,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
+// Dürüst bot kimliği: tarayıcı taklidi yapılmaz; mağaza robots.txt'de "UcfiyatBot" adıyla bizi ayrıca sınırlayabilir.
+export const BOT = 'UcfiyatBot';
+export const UA = `${BOT}/1.0 (+https://github.com/volkandoyran/internet-sitesi; price comparison)`;
 const HEADERS = { 'user-agent': UA, 'accept-language': 'tr,el;q=0.8,bg;q=0.7,en;q=0.5', accept: 'text/html,application/xhtml+xml,application/xml' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -48,7 +50,9 @@ export function parseRobots(txt) {
     if (key === 'allow' || key === 'disallow') { if (val || key === 'allow') cur.rules.push({ allow: key === 'allow', path: val }); }
     else if (key === 'crawl-delay' && +val > 0) cur.delay = +val;
   }
-  const g = groups.find((x) => x.agents.includes('*')) || { rules: [], delay: null };
+  // Önce bize özel grup (UcfiyatBot), yoksa herkes için olan (*) grup geçerlidir
+  const g = groups.find((x) => x.agents.some((a) => a.startsWith(BOT.toLowerCase())))
+    || groups.find((x) => x.agents.includes('*')) || { rules: [], delay: null };
   return { rules: g.rules.filter((r) => r.path), delay: g.delay };
 }
 const ruleRe = (p) => new RegExp('^' + p.replace(/[.+?^{}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\\\$$|\$$/, '$'));
@@ -73,6 +77,7 @@ export class Getirici {
     this.lastAt = new Map();   // host -> son istek zamanı
     this.seen = new Set();     // bu çalıştırmada açılan ürün sayfaları (aynı URL iki kez çekilmez)
     this.stats = { requests: 0, retries: 0, cacheHits: 0, notModified: 0, rendered: 0 };
+    this.byHost = new Map(); // host -> istek sayısı (mağaza başına ölçüm)
     this.browser = null;
     this.renderLock = Promise.resolve();
   }
@@ -101,6 +106,15 @@ export class Getirici {
     if (wait > 0) await sleep(wait);
   }
 
+  count(url) {
+    this.stats.requests++;
+    const h = new URL(url).host.replace(/^www\./, '');
+    this.byHost.set(h, (this.byHost.get(h) || 0) + 1);
+  }
+  requestsFor(site) {
+    try { return this.byHost.get(new URL(site).host.replace(/^www\./, '')) || 0; } catch { return 0; }
+  }
+
   // Düşük seviye istek: durum kodu ve metin döner (403/429'u hata saymaz; karar çağırana kalır)
   async raw(url, { timeout = 30000, retries = 2, headers = {}, delay, robots = true } = {}) {
     if (robots) {
@@ -112,7 +126,7 @@ export class Getirici {
       if (attempt) { this.stats.retries++; await sleep(2000 * attempt + Math.random() * 1000); }
       await this.waitTurn(url, delay);
       try {
-        this.stats.requests++;
+        this.count(url);
         const r = await fetch(url, { headers: { ...HEADERS, ...headers }, redirect: 'follow', signal: AbortSignal.timeout(timeout) });
         if (r.status >= 500 && r.status !== 503 && attempt < retries) { lastErr = new Error(`HTTP ${r.status}`); continue; }
         const text = r.status === 304 ? '' : await decode(r);
@@ -184,7 +198,7 @@ export class Getirici {
       }
       const page = await this.ctx.newPage();
       try {
-        this.stats.rendered++; this.stats.requests++;
+        this.stats.rendered++; this.count(url);
         const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
         const status = resp ? resp.status() : 0;
         await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});

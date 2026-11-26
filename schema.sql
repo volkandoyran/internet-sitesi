@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS products (
   mkeys       TEXT,            -- tüm eşleştirme anahtarları, boşlukla ayrılmış (" K1 K2 "); tarayıcı hesaplar
   specs       TEXT,            -- mağaza sayfasından okunan teknik özellikler (JSON); tarayıcı doldurur
   description TEXT,            -- mağaza sayfasındaki kısa açıklama (yoksa NULL)
+  gtin        TEXT,            -- barkod (EAN/UPC, sağlama basamağı doğrulanmış); en güçlü eşleştirme anahtarı
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -55,11 +56,21 @@ CREATE TABLE IF NOT EXISTS offers (
   updated_at  TEXT,            -- son başarılı fiyat okuma
   old_price   REAL,            -- mağazanın gösterdiği indirim öncesi fiyat (yoksa NULL)
   store_category TEXT,         -- mağazanın kendi kategori yolu (breadcrumb)
-  checked_at  TEXT             -- son kontrol (fiyat değişmese de)
+  checked_at  TEXT,            -- son kontrol (fiyat değişmese de)
+  gtin        TEXT,            -- mağaza sayfasındaki barkod
+  sku         TEXT,            -- mağazanın kendi ürün kodu
+  source      TEXT,            -- fiyatın okunduğu yer: jsonld | meta | html | selector (+render)
+  confidence  INTEGER,         -- fiyat güvenilirliği 0-100
+  verified    INTEGER NOT NULL DEFAULT 1,  -- 0: şüpheli fiyat, doğrulanana kadar sitede gösterilmez
+  pending_price REAL,          -- şüpheli değişim: bir sonraki taramada aynı çıkarsa kabul edilir
+  pending_at  TEXT,
+  stable_count INTEGER NOT NULL DEFAULT 0, -- art arda değişmeden geçen kontrol sayısı
+  next_check_at TEXT           -- değişim hızına göre bir sonraki kontrol zamanı
 );
 CREATE INDEX IF NOT EXISTS offers_product ON offers(product_id);
 CREATE INDEX IF NOT EXISTS offers_url ON offers(retailer_id, url);
 CREATE INDEX IF NOT EXISTS products_match ON products(match_key);
+CREATE INDEX IF NOT EXISTS products_gtin ON products(gtin);
 
 CREATE TABLE IF NOT EXISTS price_history (
   offer_id  INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
@@ -83,7 +94,10 @@ CREATE TABLE IF NOT EXISTS scrape_runs (
   changed     INTEGER NOT NULL DEFAULT 0,
   unchanged   INTEGER NOT NULL DEFAULT 0,
   errors      INTEGER NOT NULL DEFAULT 0,
-  message     TEXT
+  message     TEXT,
+  requests    INTEGER NOT NULL DEFAULT 0,  -- mağazaya giden istek sayısı (maliyet ölçümü)
+  duration_s  INTEGER NOT NULL DEFAULT 0,
+  suspicious  INTEGER NOT NULL DEFAULT 0   -- doğrulamaya alınan şüpheli fiyat sayısı
 );
 CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at);
 

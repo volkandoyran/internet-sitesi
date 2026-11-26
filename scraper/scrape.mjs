@@ -7,7 +7,7 @@ import { adapterFor } from './stores.mjs';
 import { Getirici, EngelHatasi } from './motor/http.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
-const PW = process.env.ADMIN_PASSWORD;
+const PW = (process.env.ADMIN_PASSWORD || '').trim();
 if (!SITE || !PW) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
 const auth = { authorization: 'Bearer ' + PW };
 const net = new Getirici({ delayMs: 2500 });
