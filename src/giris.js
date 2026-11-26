@@ -1,5 +1,5 @@
 // Siteyi yalnızca sahibine açan giriş kapısı.
-// - Tarayıcıdan gelen herkes önce /giris sayfasında şifreyi (ADMIN_PASSWORD) girer; doğru şifre
+// - Tarayıcıdan gelen herkes önce /giris sayfasında şifreyi girer: SITE_PASSWORD (varsa) ya da ADMIN_PASSWORD; doğru şifre
 //   bir yıl geçerli, HttpOnly bir çerez bırakır. Şifre değişirse eski çerezler kendiliğinden geçersizleşir.
 // - Tarama işleri (GitHub Actions) "authorization: Bearer <ADMIN_PASSWORD>" başlığıyla gelir; onlar çerezsiz geçer.
 // - Her yanıta noindex başlığı eklenir; arama motorları siteyi dizine almaz.
@@ -76,7 +76,7 @@ ${basKodu}
   <h1>Üçfiyat</h1>
   <p>Bu site özeldir. Devam etmek için şifreni gir.</p>
   <label for="sifre">Şifre</label>
-  <input id="sifre" name="sifre" type="password" autocomplete="current-password" required autofocus>
+  <input id="sifre" name="sifre" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
   <input type="hidden" name="hedef" value="${esc(hedef)}">
   <button type="submit">Giriş yap</button>
   ${hata ? `<div class="hata" role="alert">${esc(hata)}</div>` : ''}
@@ -90,19 +90,23 @@ ${basKodu}
 // basKodu: giriş sayfasının <head>'ine eklenecek kod (Search Console doğrulama etiketi sahiplik kanıtı için kalır).
 export async function kapi(request, env, url, basKodu = '') {
   const pw = env.ADMIN_PASSWORD;
+  // Siteye giriş şifresi: ayrı SITE_PASSWORD gizli anahtarı varsa o, yoksa admin şifresi
+  const sitePw = env.SITE_PASSWORD || pw;
   const path = url.pathname;
 
   if (path === '/giris') {
-    if (request.method === 'POST' && pw) {
+    if (request.method === 'POST' && sitePw) {
       const form = await request.formData().catch(() => null);
-      const sifre = (form && form.get('sifre')) || '';
+      // Telefon klavyelerinin eklediği baştaki/sondaki boşluklar yok sayılır
+      const sifre = String((form && form.get('sifre')) || '').trim();
       const hedef = guvenliHedef(form && form.get('hedef'));
-      if (await esit(String(sifre), pw)) {
+      const dogru = (await esit(sifre, sitePw.trim())) || (pw && (await esit(sifre, pw.trim())));
+      if (dogru) {
         return new Response(null, {
           status: 303,
           headers: {
             location: hedef,
-            'set-cookie': `${COOKIE}=${await oturumDegeri(pw)}; Max-Age=${YIL}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+            'set-cookie': `${COOKIE}=${await oturumDegeri(sitePw)}; Max-Age=${YIL}; Path=/; HttpOnly; Secure; SameSite=Lax`,
             'cache-control': 'no-store',
           },
         });
@@ -110,20 +114,20 @@ export async function kapi(request, env, url, basKodu = '') {
       await new Promise((r) => setTimeout(r, 800)); // tahmin denemelerini yavaşlat
       return girisSayfasi(hedef, 'Şifre yanlış.', basKodu, 401);
     }
-    return girisSayfasi(guvenliHedef(url.searchParams.get('hedef')), pw ? '' : 'Site şifresi ayarlanmamış (ADMIN_PASSWORD).', basKodu);
+    return girisSayfasi(guvenliHedef(url.searchParams.get('hedef')), sitePw ? '' : 'Site şifresi ayarlanmamış (ADMIN_PASSWORD).', basKodu);
   }
   if (path === '/cikis') {
     return new Response(null, { status: 303, headers: { location: '/giris', 'set-cookie': `${COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax` } });
   }
   if (ACIK.has(path)) return null;
-  if (!pw) return girisSayfasi('/', 'Site şifresi ayarlanmamış (ADMIN_PASSWORD).', basKodu, 503);
+  if (!sitePw) return girisSayfasi('/', 'Site şifresi ayarlanmamış (ADMIN_PASSWORD).', basKodu, 503);
 
   // Tarama işleri ve admin paneli: Bearer başlığı
   const bearer = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (bearer && (await esit(bearer, pw))) return null;
+  if (bearer && pw && (await esit(bearer, pw))) return null;
   // Tarayıcı: oturum çerezi
   const c = cerez(request, COOKIE);
-  if (c && (await esit(c, await oturumDegeri(pw)))) return null;
+  if (c && (await esit(c, await oturumDegeri(sitePw)))) return null;
 
   if (path.startsWith('/api/')) {
     return new Response(JSON.stringify({ error: 'Giriş gerekli.' }), { status: 401, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
