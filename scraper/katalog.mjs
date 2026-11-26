@@ -12,23 +12,23 @@ import { specsFromPairs, columnsFromSpecs } from '../lib/pcspecs.js';
 import { STORES, adapterFor } from './stores.mjs';
 import { classify, isExcluded, specsFromName, matchKey, modelKeys } from '../lib/catalog.js';
 import { runMatching } from './eslestir.mjs';
+import { authHeaders, hasAuth } from './kimlik.mjs';
 import { Getirici, EngelHatasi, RobotsHatasi } from './motor/http.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
-const PW = (process.env.ADMIN_PASSWORD || '').trim(); // gizli anahtara yanlışlıkla eklenen boşluk/satır sonu yok sayılır
 const DRY = process.env.KURU === '1';
-if (!DRY && (!SITE || !PW)) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
+const AUTH = hasAuth();
+if (!DRY && (!SITE || !AUTH)) { console.error('SITE_URL ve kimlik (GitHub Actions kimliği ya da ADMIN_PASSWORD) gerekli.'); process.exit(1); }
 const NEW_LIMIT = +process.env.YENI_LIMIT || 400;      // mağaza başına, çalıştırma başına yeni ürün sayfası
 const REFRESH_LIMIT = +process.env.YENILE_LIMIT || 800; // mağaza başına fiyatı yenilenecek bilinen sayfa
 const SAMPLE = +process.env.ORNEK || 0;                 // kuru denemede mağaza başına en fazla bu kadar sayfa
 const PARALLEL = 4;                                     // aynı anda taranan mağaza (her mağaza kendi içinde sırayla)
 const BLOCK_STOP = 2;                                   // art arda bu kadar engelde mağaza bu turda bırakılır
-const auth = { authorization: 'Bearer ' + PW };
 const only = process.env.MAGAZA;
 const net = new Getirici({ cacheDir: process.env.ONBELLEK || '.cache/scraper' });
 
 async function api(path, init = {}) {
-  const r = await fetch(`${SITE}/api/admin/${path}`, { ...init, headers: { ...auth, ...(init.body ? { 'content-type': 'application/json' } : {}), ...(init.headers || {}) }, signal: AbortSignal.timeout(60000) });
+  const r = await fetch(`${SITE}/api/admin/${path}`, { ...init, headers: { ...(await authHeaders()), ...(init.body ? { 'content-type': 'application/json' } : {}), ...(init.headers || {}) }, signal: AbortSignal.timeout(60000) });
   const txt = await r.text();
   let data = null;
   try { data = JSON.parse(txt); } catch {}
@@ -76,11 +76,11 @@ async function sitemapUrls(cfg) {
 
 // ---------- Plan ----------
 let plan = null;
-if (SITE && PW) {
+if (SITE && AUTH) {
   const r = await api('scraper/plan');
   if (r.ok) plan = r.data.retailers;
   else if (r.status === 401 && !DRY) {
-    console.error('::error::Site şifreyi kabul etmedi (401). GitHub Actions ADMIN_PASSWORD gizli anahtarı Cloudflare Worker ADMIN_PASSWORD ile aynı olmalı.');
+    console.error('::error::Site şifreyi kabul etmedi (401). İş akışında "permissions: id-token: write" olmalı (ya da yerelde ADMIN_PASSWORD Cloudflare’dekiyle aynı olmalı).');
     process.exit(1);
   } else console.warn('Plan alınamadı (site henüz güncellenmemiş olabilir):', r.status);
 }
@@ -234,7 +234,7 @@ if (!DRY) {
   const r = await api('scraper/report', { method: 'POST', body: JSON.stringify({ runs }) });
   if (!r.ok) console.warn('Rapor gönderilemedi:', r.status, r.txt.slice(0, 200));
   // Ülkeler ve mağazalar arası eşleştirme: aynı ürünün ayrı açılmış kayıtları birleştirilir
-  try { await runMatching(SITE, auth, { dry: DRY }); } catch (e) { console.error('Eşleştirme başarısız:', e.message); }
+  try { await runMatching(SITE, authHeaders, { dry: DRY }); } catch (e) { console.error('Eşleştirme başarısız:', e.message); }
 }
 
 console.log('\n=== Özet ===');

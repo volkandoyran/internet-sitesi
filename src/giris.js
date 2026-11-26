@@ -1,7 +1,8 @@
 // Siteyi yalnızca sahibine açan giriş kapısı.
 // - Tarayıcıdan gelen herkes önce /giris sayfasında şifreyi girer: SITE_PASSWORD (varsa) ya da ADMIN_PASSWORD; doğru şifre
 //   bir yıl geçerli, HttpOnly bir çerez bırakır. Şifre değişirse eski çerezler kendiliğinden geçersizleşir.
-// - Tarama işleri (GitHub Actions) "authorization: Bearer <ADMIN_PASSWORD>" başlığıyla gelir; onlar çerezsiz geçer.
+// - Tarama işleri (GitHub Actions) GitHub'ın imzaladığı kimlik belirteciyle (OIDC, src/oidc.js) ya da
+//   "authorization: Bearer <ADMIN_PASSWORD>" başlığıyla gelir; onlar çerezsiz geçer.
 // - Her yanıta noindex başlığı eklenir; arama motorları siteyi dizine almaz.
 
 const COOKIE = 'ucf_oturum';
@@ -9,6 +10,7 @@ const YIL = 365 * 24 * 3600;
 // Girişsiz açık kalan küçük dosyalar: ana ekrana eklenen kısayolun simgesi ve robots.txt
 const ACIK = new Set(['/robots.txt', '/icon.svg', '/icon-180.png', '/icon-512.png', '/manifest.webmanifest', '/favicon.ico']);
 
+import { jwtMi, githubActionsMi } from './oidc.js';
 import { esit, kilitli, yanlisDeneme, dogruDeneme, DENEME } from './guvenlik.js';
 
 const enc = new TextEncoder();
@@ -138,7 +140,8 @@ export async function kapi(request, env, url, basKodu = '') {
 
   // Tarama işleri ve admin paneli: Bearer başlığı
   const bearer = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (bearer && pw && (await esit(bearer, pw))) return null;
+  if (bearer && pw && !jwtMi(bearer) && (await esit(bearer, pw))) return null;
+  if (jwtMi(bearer) && (await githubActionsMi(bearer, env))) return null; // GitHub Actions kimliği (src/oidc.js)
   // Tarayıcı: oturum çerezi
   const c = cerez(request, COOKIE);
   if (c && (await esit(c, await oturumDegeri(sitePw)))) return null;

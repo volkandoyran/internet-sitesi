@@ -1,15 +1,14 @@
 // Elle eklenen bağlantıların fiyat çekicisi. GitHub Actions'ta çalışır.
 // Katalog motoru (katalog.mjs) site haritası olan her mağazanın bağlantılarını zaten günceller; bu betik yalnızca
 // site haritası / site adresi tanımlı olmayan mağazalara elle eklenmiş ürün bağlantılarını kontrol eder.
-// Gerekli ortam değişkenleri: SITE_URL, ADMIN_PASSWORD
+// Gerekli ortam değişkenleri: SITE_URL; kimlik GitHub Actions'ta otomatik (OIDC), yerelde ADMIN_PASSWORD
 import { extractPrice, htmlOldPrice } from './extract.mjs';
 import { adapterFor } from './stores.mjs';
 import { Getirici, EngelHatasi } from './motor/http.mjs';
+import { authHeaders, hasAuth } from './kimlik.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
-const PW = (process.env.ADMIN_PASSWORD || '').trim();
-if (!SITE || !PW) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
-const auth = { authorization: 'Bearer ' + PW };
+if (!SITE || !hasAuth()) { console.error('SITE_URL ve kimlik (GitHub Actions ya da ADMIN_PASSWORD) gerekli.'); process.exit(1); }
 const net = new Getirici({ delayMs: 2500 });
 
 async function rates() {
@@ -23,13 +22,13 @@ async function rates() {
   return {};
 }
 
-const retailers = await (await fetch(`${SITE}/api/admin/retailers`, { headers: auth })).json();
+const retailers = await (await fetch(`${SITE}/api/admin/retailers`, { headers: await authHeaders() })).json();
 const covered = new Set((Array.isArray(retailers) ? retailers : []).filter((r) => {
   let config = null;
   try { config = r.config ? JSON.parse(r.config) : null; } catch {}
   return adapterFor({ ...r, config }).hasSource;
 }).map((r) => r.id));
-const allOffers = await (await fetch(`${SITE}/api/admin/offers`, { headers: auth })).json();
+const allOffers = await (await fetch(`${SITE}/api/admin/offers`, { headers: await authHeaders() })).json();
 if (!Array.isArray(allOffers)) { console.error('Teklif listesi alınamadı:', allOffers); process.exit(1); }
 const offers = allOffers.filter((o) => !covered.has(o.retailer_id));
 console.log(`${offers.length} elle eklenmiş bağlantı kontrol edilecek`);
@@ -57,7 +56,7 @@ await Promise.all(Object.values(byRetailer).map(async (list) => {
 
 const res = await fetch(`${SITE}/api/admin/prices`, {
   method: 'POST',
-  headers: { ...auth, 'content-type': 'application/json' },
+  headers: { ...(await authHeaders()), 'content-type': 'application/json' },
   body: JSON.stringify({ rates: await rates(), results }),
 });
 console.log('Sonuç:', res.status, await res.text());
