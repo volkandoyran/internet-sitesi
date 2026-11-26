@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS offers (
 CREATE INDEX IF NOT EXISTS offers_product ON offers(product_id);
 CREATE INDEX IF NOT EXISTS offers_url ON offers(retailer_id, url);
 CREATE INDEX IF NOT EXISTS products_match ON products(match_key);
+CREATE INDEX IF NOT EXISTS products_type ON products(type, category);
 CREATE INDEX IF NOT EXISTS products_gtin ON products(gtin);
 
 CREATE TABLE IF NOT EXISTS price_history (
@@ -135,3 +136,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('ad_bottom', ''),
   ('ad_head', ''),
   ('ads_txt', '');
+
+-- Giriş denemesi sayacı (aynı IP'den 15 dakikada 10 yanlış şifre -> 15 dakika bekleme)
+CREATE TABLE IF NOT EXISTS login_failures (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, first_at TEXT NOT NULL, locked_until TEXT);
+-- Admin paneli oturumları: yalnızca oturum kimliğinin SHA-256 özeti saklanır
+CREATE TABLE IF NOT EXISTS admin_sessions (id_hash TEXT PRIMARY KEY, pw_tag TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);

@@ -3,9 +3,8 @@
 //   /ozellikler     tüm laptop ve masaüstü bilgisayarların teknik özellik listesi
 //   /urun/<id>-<ad> tek ürün: teknik özellikler, ülkelere göre fiyatlar, mağaza bağlantıları
 //   /sitemap.xml    Google için site haritası (ürün sayfaları dahil)
-import { loadProducts, rateFor } from './api.js';
+import { loadProducts, rateFor, productById, similarTo } from './api.js';
 import { computerSpecs } from '../lib/pcspecs.js';
-import { distance } from '../lib/specs.js';
 
 export const SITE = 'https://ucfiyat.vitrin-web.workers.dev';
 const COUNTRIES = [['TR', 'Türkiye'], ['GR', 'Yunanistan'], ['BG', 'Bulgaristan']];
@@ -306,8 +305,8 @@ export async function specsListPage(env) {
 // ---------- Ürün sayfası ----------
 export async function productPage(env, idPart, origin = SITE) {
   const id = parseInt(idPart, 10);
-  const { all, rate } = await data(env);
-  const p = Number.isInteger(id) && all.find((x) => x.id === id);
+  // Tek ürün kimlikle okunur; tüm katalog yüklenmez
+  const [p, rate] = await Promise.all([Number.isSafeInteger(id) && id > 0 ? productById(env, id) : null, rateFor(env, 'TRY')]);
   if (!p) {
     return html(layout({
       title: 'Ürün bulunamadı · Üçfiyat', description: 'Bu ürün artık listelenmiyor.', path: '/urun/' + encodeURIComponent(idPart), rate,
@@ -340,8 +339,7 @@ export async function productPage(env, idPart, origin = SITE) {
     </li>`;
   }).join('');
   const lastUpd = p.offers.map((o) => o.updated_at).filter(Boolean).sort().pop();
-  const similar = all.filter((x) => x.id !== p.id && x.type === p.type && (p.type !== 'part' || x.category === p.category))
-    .map((x) => ({ x, d: distance(p, x) })).sort((a, b) => a.d - b.d).slice(0, 6).map(({ x }) =>
+  const similar = (await similarTo(env, p, 6)).map((x) =>
       `<a href="${productPath(x)}">${thumb(x.image)}<span class="mini-txt"><span>${esc(shortName(x.name))}</span><small><b>${money(x.best?.price_eur)}</b> · ${esc(x.best?.retailer || '')}</small></span></a>`).join('');
   const crumbs = `<nav class="crumbs" aria-label="Konum"><a href="/">Ana sayfa</a><span aria-hidden="true">/</span><a href="/?bolum=${BOLUM[p.type]}">${SECTION[p.type]}</a>${isPc(p) ? '<span aria-hidden="true">/</span><a href="/ozellikler">Teknik özellikler</a>' : ''}</nav>`;
   const img = `<span class="p-noimg">${ic('img')}${p.image ? `<img src="${esc(p.image)}" alt="${esc(shortName(p.name))}" referrerpolicy="no-referrer" width="168" height="168" onerror="this.remove()">` : ''}</span>`;
