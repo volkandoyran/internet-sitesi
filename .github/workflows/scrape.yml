@@ -67,7 +67,7 @@ jobs:
       - name: Playwright (yalnızca JavaScript ile yüklenen mağaza varsa)
         if: steps.plan.outputs.run == 'true' && steps.plan.outputs.render == 'true'
         run: |
-          npm i --no-save --no-audit --no-fund playwright@1.56.1
+          npm i --no-save --no-audit --no-fund playwright@1.65.0
           npx playwright install --with-deps --only-shell chromium
       - name: Mağazaları tara (yeni ürünler + fiyatlar)
         if: steps.plan.outputs.run == 'true'
