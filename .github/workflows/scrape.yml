@@ -31,12 +31,17 @@ on:
 
 concurrency: { group: fiyat, cancel-in-progress: false }
 
+# Siteye giriş şifresiz: GitHub her çalıştırmaya imzalı kısa ömürlü bir kimlik belirteci verir (OIDC),
+# site yalnızca bu deponun bu iş akışından gelen belirteci kabul eder (src/oidc.js). ADMIN_PASSWORD gizli anahtarı gerekmez.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
-      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       SITE_URL: ${{ vars.SITE_URL }}
       MAGAZA: ${{ inputs.magaza }}
       HEPSI: ${{ inputs.hepsi }}
@@ -49,8 +54,8 @@ jobs:
         with: { node-version: 22, cache: npm }
       - name: Ayarları kontrol et
         run: |
-          if [ "$KURU" != "1" ] && { [ -z "$SITE_URL" ] || [ -z "$ADMIN_PASSWORD" ]; }; then
-            echo "::error::Depo ayarlarında SITE_URL değişkeni ve ADMIN_PASSWORD gizli anahtarı gerekli. README'deki kurulum adımlarına bakın."
+          if [ "$KURU" != "1" ] && [ -z "$SITE_URL" ]; then
+            echo "::error::Depo ayarlarında SITE_URL değişkeni gerekli. README'deki kurulum adımlarına bakın."
             exit 1
           fi
       - run: npm ci --no-audit --no-fund

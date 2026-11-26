@@ -8,7 +8,7 @@ Türkiye, Yunanistan ve Bulgaristan'da hem internet sitesi hem fiziksel mağazas
 - Türk lirası fiyatlar ECB kuruyla euroya çevrilir
 - `/eslesen`: birden fazla ülkede satılan ürünler, ülkelere göre fiyat ve en ucuz ülke
 - `/ozellikler`: tüm laptop ve masaüstü bilgisayarların teknik özellik listesi; `/urun/<id>-<ad>`: tek ürün sayfası (özellikler, tüm mağazalar, "Mağazada gör" bağlantıları). Özellikler mağaza sayfasındaki özellik tablosundan (tarayıcı fiyatı okurken aynı sayfadan, ek istek olmadan) ve ürün adından otomatik çıkarılır (`lib/pcspecs.js`)
-- Site özeldir: her istek önce `src/giris.js` kapısından geçer. Tarayıcıda `/giris` sayfasında `ADMIN_PASSWORD` girilir, bir yıl geçerli çerez bırakılır (`/cikis` ile çıkılır). Tarama işleri `Bearer ADMIN_PASSWORD` başlığıyla çerezsiz geçer. Arama motorları için `robots.txt` her şeyi kapatır, her yanıtta `X-Robots-Tag: noindex` var, `/sitemap.xml` kapalı
+- Site özeldir: her istek önce `src/giris.js` kapısından geçer. Tarayıcıda `/giris` sayfasında `ADMIN_PASSWORD` girilir, bir yıl geçerli çerez bırakılır (`/cikis` ile çıkılır). Tarama işleri (GitHub Actions) şifre taşımaz: GitHub'ın her çalıştırmaya verdiği imzalı, kısa ömürlü kimlik belirteciyle (OIDC) geçer; site yalnızca bu deponun `scrape.yml` iş akışından gelen belirteci kabul eder (`src/oidc.js`). Bu yüzden GitHub'da `ADMIN_PASSWORD` gizli anahtarı gerekmez, Cloudflare'deki şifre değişse de tarama bozulmaz. Yerelde betikler `ADMIN_PASSWORD` ile çalışır. Arama motorları için `robots.txt` her şeyi kapatır, her yanıtta `X-Robots-Tag: noindex` var, `/sitemap.xml` kapalı
 - Site satış yapmaz: her sayfanın üstündeki bilgi bandı ve fiyat bağlantılarının yanındaki notlar bunu belirtir
 - `/admin` adresinde yönetim paneli: ürün, satıcı bağlantısı, elle fiyat, satıcı açma/kapama, reklam kodları
 - Admin paneli girişi (`src/guvenlik.js`): şifre tarayıcıda saklanmaz; `/api/admin/login` bir kez doğrular ve 12 saatlik HttpOnly, Secure, SameSite=Strict oturum çerezi verir (yalnızca `/api/admin` yolunda). Oturum kimliğinin yalnızca özeti D1 `admin_sessions` tablosunda durur; çıkışta silinir, `ADMIN_PASSWORD` değişince tüm oturumlar düşer. Çerezle gelen değiştirici istekler yalnızca sitenin kendi sayfasından kabul edilir (CSRF)
@@ -26,7 +26,7 @@ Site, Cloudflare'in GitHub bağlantısıyla (Workers Builds) yayınlanır: `main
 
 1. **Cloudflare'de admin şifresi:** Cloudflare paneli → *Workers & Pages → ucfiyat → Settings → Variables and Secrets → Add*. Tür **Secret**, ad `ADMIN_PASSWORD`, değer olarak uzun ve tahmin edilemez bir şifre girin.
 2. **GitHub'da fiyat çekici ayarları:** bu depoda *Settings → Secrets and variables → Actions*:
-   - *Secrets* sekmesi → `ADMIN_PASSWORD` = 1. adımdaki şifrenin aynısı
+   - Gizli anahtar gerekmez: iş akışı siteye GitHub'ın kimlik belirteciyle (OIDC) girer. Eski `ADMIN_PASSWORD` Actions gizli anahtarı kullanılmıyor, silinebilir.
    - *Variables* sekmesi → `SITE_URL` = sitenin adresi (ör. `https://ucfiyat.<hesabınız>.workers.dev`, Cloudflare panelinde Worker sayfasının üstünde yazar)
 
 Worker adı `wrangler.jsonc` içindeki `name` ile Cloudflare panelindeki Worker adı aynı olmalıdır (`ucfiyat`). Kendi alan adınızı *Settings → Domains & Routes* bölümünden bağlayabilirsiniz; o zaman `SITE_URL`'yi de güncelleyin.

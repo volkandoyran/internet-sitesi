@@ -48,8 +48,10 @@ export function planMatches(products) {
 }
 
 // Siteye küçük parçalar halinde gönder (ücretsiz planda istek başına ~50 sorgu sınırı)
+// auth: başlık nesnesi ya da başlık döndüren (async) fonksiyon (GitHub kimlik belirteci kısa ömürlüdür)
 export async function runMatching(SITE, auth, { dry = false } = {}) {
-  const r = await fetch(`${SITE}/api/admin/match`, { headers: auth });
+  const hdr = async () => (typeof auth === 'function' ? await auth() : auth);
+  const r = await fetch(`${SITE}/api/admin/match`, { headers: await hdr() });
   if (!r.ok) { console.warn('Eşleştirme: ürün listesi alınamadı', r.status); return; }
   const products = await r.json();
   const { merges, keys } = planMatches(products);
@@ -57,7 +59,7 @@ export async function runMatching(SITE, auth, { dry = false } = {}) {
   console.log(`Eşleştirme: ${products.length} ürün, ${merges.length} grup birleşecek (${dropped} kopya ürün), ${keys.length} ürünün anahtarı güncellenecek`);
   if (dry) { for (const m of merges.slice(0, 30)) console.log('  [kuru]', m.keep, '<-', m.drop.join(',')); return; }
   const send = async (payload) => {
-    const res = await fetch(`${SITE}/api/admin/match`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch(`${SITE}/api/admin/match`, { method: 'POST', headers: { ...(await hdr()), 'content-type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) console.warn('  eşleştirme gönderilemedi:', res.status, (await res.text()).slice(0, 200));
   };
   for (let i = 0; i < merges.length; i += 20) await send({ merges: merges.slice(i, i + 20) });
@@ -67,6 +69,7 @@ export async function runMatching(SITE, auth, { dry = false } = {}) {
 // Tek başına: node scraper/eslestir.mjs (SITE_URL, ADMIN_PASSWORD; KURU=1 yalnızca gösterir)
 if (import.meta.url === `file://${process.argv[1]}`) {
   const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
-  if (!SITE || !process.env.ADMIN_PASSWORD) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
-  await runMatching(SITE, { authorization: 'Bearer ' + (process.env.ADMIN_PASSWORD || '').trim() }, { dry: process.env.KURU === '1' });
+  const { authHeaders, hasAuth } = await import('./kimlik.mjs');
+  if (!SITE || !hasAuth()) { console.error('SITE_URL ve kimlik (GitHub Actions ya da ADMIN_PASSWORD) gerekli.'); process.exit(1); }
+  await runMatching(SITE, authHeaders, { dry: process.env.KURU === '1' });
 }
