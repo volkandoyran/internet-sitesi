@@ -1,3 +1,4 @@
+import './ui.js';
 // Sunucuda oluşturulan sayfalar (eşleşen modeller, teknik özellikler, ürün) için:
 // para birimi düğmesi, bölüm/tür süzgeçleri, liste içinde arama ve sıralama.
 const $ = (s, el = document) => el.querySelector(s);
