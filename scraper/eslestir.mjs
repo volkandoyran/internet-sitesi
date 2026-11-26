@@ -2,7 +2,7 @@
 // (ör. Yunanistan'da "KINHTO IPHONE 17 PRO MAX 256GB", Bulgaristan'da "Смартфон Apple iPhone 17 Pro Max ... 256GB")
 // ortak anahtarı olanlar tek üründe toplanır; böylece fiyatlar yan yana görünür.
 // Anahtarlar burada (GitHub Actions'ta) hesaplanır; site yalnızca birleştirme sorgularını çalıştırır.
-import { modelKeys } from '../lib/catalog.js';
+import { modelKeys, isSpecKey } from '../lib/catalog.js';
 
 // Aynı tür/kategoride ortak anahtarı olan ürünleri gruplar. Dönüş: { merges: [{keep, drop}], keys: [{id, mkeys}] }
 export function planMatches(products) {
@@ -13,10 +13,13 @@ export function planMatches(products) {
   for (const p of products) {
     parent.set(p.id, p.id);
     // Önceki birleştirmelerden gelen anahtarlar korunur (birleşen diğer adların anahtarları)
-    const keys = [...new Set([...modelKeys(p), ...String(p.mkeys || '').split(' ').filter(Boolean)])];
+    // Eski sürümün yanlışlıkla anahtar saydığı hız/ölçü değerleri (ör. "70007000MBS") atılır
+    const keys = [...new Set([...modelKeys(p), ...String(p.mkeys || '').split(' ').filter(Boolean)])].filter((k) => !isSpecKey(k));
     keysOf.set(p.id, keys);
+    // Diskte kapasite de kapsamın parçası: aynı serinin 2 TB ve 4 TB modeli ortak kod taşısa bile birleşmez
+    const size = p.type === 'part' && ['ssd', 'hdd'].includes(p.category) && p.storage_gb ? p.storage_gb : '';
     for (const k of keys) {
-      const scope = `${p.type}|${p.type === 'part' ? p.category || '' : ''}|${k}`;
+      const scope = `${p.type}|${p.type === 'part' ? p.category || '' : ''}|${size}|${k}`;
       if (owner.has(scope)) { const a = find(p.id), b = find(owner.get(scope)); if (a !== b) parent.set(a, b); }
       else owner.set(scope, p.id);
     }
