@@ -127,3 +127,78 @@ test('sunucu hatası: genel mesaj ve takip kodu, teknik ayrıntı yok', async ()
   const body = await r.text();
   assert.doesNotMatch(body, /SQLITE|D1_|stack|at \w+ \(/i);
 });
+
+test('güvenli HTTP başlıkları: CSP, nosniff, çerçeve yasağı, HSTS (giriş sayfası, API ve statik dosya)', async () => {
+  const j = await siteGirisi();
+  for (const [path, o] of [['/giris', {}], ['/api/products', { j }], ['/style.css', { j }], ['/', { j }]]) {
+    const r = await req(path, o);
+    const csp = r.headers.get('content-security-policy') || '';
+    assert.match(csp, /script-src 'self'(;|$)/, path);
+    assert.match(csp, /frame-ancestors 'none'/, path);
+    assert.equal(r.headers.get('x-content-type-options'), 'nosniff', path);
+    assert.equal(r.headers.get('x-frame-options'), 'DENY', path);
+    assert.match(r.headers.get('strict-transport-security') || '', /max-age=\d+/, path);
+    assert.ok(r.headers.get('referrer-policy'), path);
+  }
+});
+
+test('admin ürün listesi: sayfalama, arama, ürün no ve süzgeç; inceleme listesi ve fiyat onay/ret', async () => {
+  const H = { ...bearer, 'content-type': 'application/json' };
+  const post = (path, body, method = 'POST') => req('/api/admin/' + path, { method, body: JSON.stringify(body), headers: H });
+  const get = async (path) => (await req('/api/admin/' + path, { headers: bearer })).json();
+  // 55 ürün: ilk sayfa 50, ikinci sayfa kalan
+  for (let i = 0; i < 55; i++) await post('products', { name: `Sayfa testi ürün ${i}`, type: 'desktop', brand: i === 7 ? 'Zebramarka' : 'Marka' });
+  const p1 = await get('products?q=' + encodeURIComponent('Sayfa testi'));
+  assert.equal(p1.total, 55); assert.equal(p1.items.length, 50); assert.equal(p1.pages, 2);
+  const p2 = await get('products?q=' + encodeURIComponent('Sayfa testi') + '&sayfa=2');
+  assert.equal(p2.items.length, 5); assert.equal(p2.page, 2);
+  assert.equal((await get('products?q=Zebramarka')).total, 1);
+  const tek = await get('products?q=%23' + p1.items[0].id);
+  assert.equal(tek.total, 1); assert.equal(tek.items[0].id, p1.items[0].id);
+  assert.equal((await get('products?q=' + encodeURIComponent('%_yok'))).total, 0); // LIKE joker karakterleri kaçırılır
+  assert.ok((await get('products?sayfa=999')).page >= 1); // aralık dışı sayfa sınırlanır
+  assert.ok(Number.isInteger((await get('products')).stats.products));
+
+  // Katalog taraması: fiyat 1000 € → 3000 € sıçrar, bekletilir (sitede eski fiyat kalır)
+  const item = (price) => ({ retailer_id: 'jarcomputers', url: 'https://www.jarcomputers.com/inceleme-test', name: 'İnceleme Test Laptop 16GB 512GB', type: 'laptop', price, currency: 'EUR', in_stock: true });
+  assert.equal((await post('catalog', { items: [item(1000)] })).status, 200);
+  await post('catalog', { items: [item(3000)] });
+  let rv = await get('review');
+  let o = rv.find((x) => x.url === item(0).url);
+  assert.ok(o, 'bekleyen fiyat inceleme listesinde'); assert.equal(o.kind, 'bekliyor'); assert.equal(o.pending_price, 3000);
+  // Reddet: bekleyen değişim atılır, fiyat 1000 kalır
+  assert.equal((await post(`offers/${o.id}/reddet`, {})).status, 200);
+  assert.ok(!(await get('review')).some((x) => x.id === o.id && x.kind === 'bekliyor'));
+  assert.equal((await post(`offers/${o.id}/reddet`, {})).status, 409); // işlenmiş kayıt
+  // Yeniden sıçrama ve onay: yeni fiyat kabul edilir, geçmişe yazılır
+  await post('catalog', { items: [item(3000)] });
+  o = (await get('review')).find((x) => x.id === o.id);
+  assert.equal(o.kind, 'bekliyor');
+  assert.equal((await post(`offers/${o.id}/onayla`, {})).status, 200);
+  const h = await get('history/' + o.product_id);
+  assert.equal(h.offers[0].price, 3000);
+  assert.ok(h.history.some((x) => x.price === 3000));
+  assert.equal((await post(`offers/${o.id}/onayla`, {})).status, 409); // zaten onaylı
+  // Sitede en ucuz fiyat onaylanan yeni fiyattan hesaplanır
+  const site = await siteGirisi();
+  const pub = await (await req('/api/products/' + o.product_id, { j: site })).json();
+  assert.equal(pub.product.best.price_eur, 3000);
+  assert.equal((await post('offers/999999/onayla', {})).status, 404);
+  assert.equal((await post('offers/abc/onayla', {})).status, 400);
+  // Yanlış eşleşmeyi ayır: ikinci mağazanın teklifi yeni ürüne taşınır, ürünler birbirinden ayrılır
+  const prod = await (await post('products', { name: 'Ayırma testi', type: 'laptop' })).json();
+  const a = await (await post('offers', { product_id: prod.id, retailer_id: 'technomarket', url: 'https://www.technomarket.bg/ayir-1', price: 500, manual: true })).json();
+  const b = await (await post('offers', { product_id: prod.id, retailer_id: 'jarcomputers', url: 'https://www.jarcomputers.com/ayir-2', price: 900, manual: true })).json();
+  const sp = await post(`offers/${b.id}/ayir`, {});
+  assert.equal(sp.status, 200, await sp.clone().text());
+  const { product_id: yeni } = await sp.json();
+  assert.notEqual(yeni, prod.id);
+  assert.equal((await get('history/' + prod.id)).offers.length, 1);
+  assert.equal((await get('history/' + yeni)).offers[0].id, b.id);
+  assert.equal((await post(`offers/${a.id}/ayir`, {})).status, 400); // tek bağlantılı ürün ayrılmaz
+  const m = (await get('match')).find((x) => x.id === yeni);
+  assert.equal(m.split_from, prod.id);
+  // Yetkisiz kullanıcı inceleme işlemi yapamaz
+  assert.equal((await req('/api/admin/review')).status, 401);
+  assert.equal((await req(`/api/admin/offers/${o.id}/onayla`, { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })).status, 401);
+}, { timeout: 120000 });

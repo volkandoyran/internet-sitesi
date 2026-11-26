@@ -30,9 +30,34 @@ function cerez(request, ad) {
   return '';
 }
 
+// Güvenli HTTP başlıkları: tüm yanıtlara eklenir (yalnızca kendi betiklerimiz çalışır, site başka sitede çerçeveye gömülemez).
+// Görseller mağaza sunucularından geldiği için img-src https: açık; yazı tipi Google Fonts'tan.
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: https:",
+  "connect-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "object-src 'none'",
+].join('; ');
+export const GUVENLI_BASLIKLAR = {
+  'content-security-policy': CSP,
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'strict-transport-security': 'max-age=31536000',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+  'cross-origin-opener-policy': 'same-origin',
+};
+
 export function noindex(res) {
   const r = new Response(res.body, res);
   r.headers.set('x-robots-tag', 'noindex, nofollow, noarchive');
+  for (const [k, v] of Object.entries(GUVENLI_BASLIKLAR)) if (!r.headers.has(k)) r.headers.set(k, v);
   return r;
 }
 

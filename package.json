@@ -6,7 +6,8 @@
     "dev": "wrangler dev",
     "scrape": "node scraper/scrape.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "wrangler deploy --dry-run"
+    "check": "wrangler deploy --dry-run",
+    "e2e": "node --test --test-concurrency=1 test/e2e/*.e2e.mjs"
   },
   "devDependencies": {
     "cheerio": "^1.2.0",

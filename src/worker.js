@@ -67,6 +67,8 @@ export const SCRAPER_COLUMNS = [
   ['scrape_runs', 'requests', 'INTEGER NOT NULL DEFAULT 0'],
   ['scrape_runs', 'duration_s', 'INTEGER NOT NULL DEFAULT 0'],
   ['scrape_runs', 'suspicious', 'INTEGER NOT NULL DEFAULT 0'],
+  // Panelde "Ayrı ürün yap" ile ayrılan ürün: hangi üründen ayrıldığı (otomatik eşleştirme yeniden birleştirmesin)
+  ['products', 'split_from', 'INTEGER'],
 ];
 async function migrateScraper(env) {
   const have = {};
