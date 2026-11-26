@@ -158,15 +158,26 @@ async function renderProducts() {
 const when = (t) => (t ? new Date(t).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 const money = (v, c) => (v == null ? '—' : `${(+v).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ${c === 'TRY' ? '₺' : c === 'EUR' || !c ? '€' : c}`);
 
+// Fiyatın kaynağı ve güvenilirliği: doğrulanmamış fiyat sitede gösterilmez, bekleyen fiyat bir sonraki taramayı bekler
+const SOURCES = { jsonld: 'JSON-LD', meta: 'meta etiketi', html: 'sayfa HTML', selector: 'CSS seçici' };
+function trust(o) {
+  const src = o.source ? (SOURCES[o.source.replace('+render', '')] || o.source) + (o.source.includes('+render') ? ' (Playwright)' : '') : 'eski kayıt';
+  const pill = o.verified === 0 ? '<span class="pill warn">Doğrulanmadı</span><div class="err">sitede gösterilmiyor</div>'
+    : o.pending_price != null ? `<span class="pill warn">Bekliyor: ${money(o.pending_price, o.currency)}</span>`
+    : o.confidence != null ? `<span class="pill ${o.confidence >= 75 ? 'ok' : ''}">%${o.confidence}</span>` : '';
+  return `${pill}<div class="muted">${esc(src)}${o.gtin ? ` · barkod ${esc(o.gtin)}` : ''}${o.sku ? ` · SKU ${esc(o.sku)}` : ''}</div>`;
+}
+
 // Fiyat değişim geçmişi: yalnızca fiyatın değiştiği anlar kaydedilir
 function historyTable({ offers, history }) {
   if (!offers.length) return '<p class="muted">Bu ürünün mağaza bağlantısı yok.</p>';
   const byOffer = new Map(offers.map((o) => [o.id, o]));
-  return `<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Mağaza</th><th>Güncel</th><th>Eski fiyat</th><th>Son kontrol</th></tr></thead><tbody>
+  return `<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Mağaza</th><th>Güncel</th><th>Eski fiyat</th><th>Güvenilirlik</th><th>Son kontrol</th></tr></thead><tbody>
     ${offers.map((o) => `<tr><td><a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.country)} · ${esc(o.retailer)}</a></td>
       <td>${money(o.price, o.currency)}${o.in_stock === 0 ? ' <span class="muted">stokta yok</span>' : ''}</td>
       <td>${o.old_price ? `<s>${money(o.old_price, o.currency)}</s> <span class="muted">−%${Math.round((1 - o.price / o.old_price) * 100)}</span>` : '—'}</td>
-      <td class="muted">${when(o.checked_at || o.updated_at)}${o.last_error ? `<div class="err">${esc(o.last_error)}</div>` : ''}</td></tr>`).join('')}
+      <td>${trust(o)}</td>
+      <td class="muted">${when(o.checked_at || o.updated_at)}${o.next_check_at ? `<br>sonraki: ${when(o.next_check_at)}` : ''}${o.last_error ? `<div class="err">${esc(o.last_error)}</div>` : ''}</td></tr>`).join('')}
     </tbody></table></div>
     <h4 style="margin:14px 0 4px;font-size:14px">Fiyat değişimleri (${history.length})</h4>
     ${history.length ? `<div class="scroll"><table><thead><tr><th>Tarih</th><th>Mağaza</th><th>Fiyat</th><th>€</th></tr></thead><tbody>
@@ -175,6 +186,7 @@ function historyTable({ offers, history }) {
 }
 
 // ---------- Veri toplama ----------
+const dur = (s) => !s ? '—' : s < 60 ? s + ' sn' : s < 3600 ? Math.round(s / 60) + ' dk' : (s / 3600).toFixed(1) + ' sa';
 const INTERVALS = [1, 2, 3, 4, 6, 8, 12, 24, 48];
 function storeState(r, now) {
   if (!r.scrape) return ['off', 'Pasif'];
@@ -198,6 +210,8 @@ async function renderScraper() {
       <div class="stat"><b>${rs.filter((r) => r.scrape).length}</b><span>aktif toplayıcı</span></div>
       <div class="stat"><b>${rs.filter((r) => r.paused_until && r.paused_until > st.now).length}</b><span>duraklatılmış (engel)</span></div>
       <div class="stat"><b>${sum('offers').toLocaleString('tr-TR')}</b><span>toplanan fiyat</span></div>
+      <div class="stat"><b>${(sum('unverified') + sum('pending')).toLocaleString('tr-TR')}</b><span>şüpheli fiyat (doğrulama bekliyor)</span></div>
+      <div class="stat"><b>${sum('with_gtin').toLocaleString('tr-TR')}</b><span>barkodlu fiyat</span></div>
       <div class="stat"><b style="font-size:17px">${when(lastOk)}</b><span>son başarılı toplama</span></div>
       <div class="stat"><b style="font-size:17px">${when(lastErr)}</b><span>son hata</span></div>
     </div>
@@ -215,10 +229,10 @@ async function renderScraper() {
         <span class="muted" style="font-weight:400">Boş bırakılırsa site haritası robots.txt'den bulunur ve ürün sayfalarında JSON-LD okunur. Ayarlar: sitemaps, urlPattern, selectors (name, price, old_price, image@src, description, brand, in_stock, out_of_stock), render (JavaScript gerekiyorsa true), delayMs.</span></label>
       <div class="row" style="margin-top:12px"><button class="btn" type="submit">Mağazayı ekle</button></div></form>
     <div class="box"><h3 style="margin:0 0 8px;font-size:16px">Son çalıştırmalar</h3><div class="scroll"><table>
-      <thead><tr><th>Zaman</th><th>Mağaza</th><th>Sonuç</th><th>Sayfa</th><th>Yeni</th><th>Fiyatı değişen</th><th>Aynı</th><th>Hata</th></tr></thead><tbody>
+      <thead><tr><th>Zaman</th><th>Mağaza</th><th>Sonuç</th><th>Sayfa</th><th>İstek</th><th>Süre</th><th>Yeni</th><th>Fiyatı değişen</th><th>Aynı</th><th>Şüpheli</th><th>Hata</th></tr></thead><tbody>
       ${st.runs.map((x) => `<tr><td>${when(x.finished_at || x.started_at)}</td><td>${esc(x.retailer_id)}</td>
         <td>${x.ok ? '<span class="pill ok">Başarılı</span>' : x.blocked ? '<span class="pill warn">Engellendi</span>' : '<span class="pill warn">Hata</span>'}${x.message ? `<div class="${x.ok ? 'muted' : 'err'}">${esc(x.message)}</div>` : ''}</td>
-        <td>${x.pages}</td><td>${x.added}</td><td>${x.changed}</td><td>${x.unchanged}</td><td>${x.errors}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Henüz kayıt yok. İlk saatlik turdan sonra görünür.</td></tr>'}
+        <td>${x.pages}</td><td>${x.requests ?? '—'}</td><td>${dur(x.duration_s)}</td><td>${x.added}</td><td>${x.changed}</td><td>${x.unchanged}</td><td>${x.suspicious || 0}</td><td>${x.errors}</td></tr>`).join('') || '<tr><td colspan="11" class="muted">Henüz kayıt yok. İlk saatlik turdan sonra görünür.</td></tr>'}
       </tbody></table></div></div>`;
 
   el.onclick = async (e) => {
@@ -259,10 +273,11 @@ function storeCard(r, now) {
     <h3><span>${esc(r.country)} · <a href="${esc(r.site)}" target="_blank" rel="noopener">${esc(r.name)}</a></span><span class="pill ${cls}">${label}</span></h3>
     <dl class="kv">
       <dt>Ürün / fiyat</dt><dd>${(r.products || 0).toLocaleString('tr-TR')} ürün · ${(r.offers || 0).toLocaleString('tr-TR')} fiyat${r.errors ? ` · <span class="err">${r.errors} hatalı bağlantı</span>` : ''}</dd>
+      ${r.offers ? `<dt>Güvenilirlik</dt><dd>${r.confidence != null ? `ortalama %${r.confidence}` : '—'}${r.with_gtin ? ` · ${r.with_gtin} barkodlu` : ''}${r.unverified || r.pending ? ` · <span class="err">${(r.unverified || 0) + (r.pending || 0)} şüpheli</span>` : ''}</dd>` : ''}
       <dt>Son başarılı</dt><dd>${when(r.last_ok_at)}</dd>
       <dt>Son hata</dt><dd>${when(r.last_error_at)}${r.last_error ? `<div class="err">${esc(r.last_error)}</div>` : ''}</dd>
       ${paused ? `<dt>Bekleme</dt><dd>${when(r.paused_until)} tarihine kadar</dd>` : ''}
-      <dt>Yöntem</dt><dd>${r.config?.render ? 'Playwright (JavaScript)' : 'HTTP + JSON-LD'}${r.config?.selectors ? ' + CSS seçiciler' : ''}</dd>
+      <dt>Yöntem</dt><dd>${r.config?.render ? 'Playwright (JavaScript)' : 'HTTP + JSON-LD'} · kimlik: UcfiyatBot${r.config?.selectors ? ' + CSS seçiciler' : ''}</dd>
     </dl>
     <div class="row">
       <label class="muted"><input type="checkbox" name="scrape" ${r.scrape ? 'checked' : ''} style="width:auto"> Toplayıcı aktif</label>

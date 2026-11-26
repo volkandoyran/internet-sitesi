@@ -35,13 +35,17 @@ function lanes(p) {
   });
   const prices = perCountry.filter(Boolean).map((o) => o.price_eur);
   const max = Math.max(...prices, 1);
-  const min = Math.min(...prices);
+  // "En ucuz" yalnızca stokta olan ülkeler arasından seçilir (hiçbirinde stok yoksa hepsinden)
+  const inStock = perCountry.filter((o) => o && o.in_stock !== 0);
+  const pool = inStock.length ? inStock : perCountry.filter(Boolean);
+  const cheapest = pool.reduce((a, o) => (!a || o.price_eur < a.price_eur ? o : a), null);
   return perCountry.map((o, i) => {
     const [cc, label] = COUNTRIES[i];
     if (!o) return `<div class="lane ${cc} none"><span class="cc" title="${label}">${cc}</span><div class="bar"><div class="txt">Bu ülkede satıcı yok</div></div></div>`;
-    const best = prices.length > 1 && o.price_eur === min;
+    const best = prices.length > 1 && o === cheapest;
+    const out = o.in_stock === 0 ? ' · Stokta yok' : '';
     const inner = `<div class="fill" style="width:${Math.round((o.price_eur / max) * 100)}%"></div>
-      <div class="txt"><span class="price">${money(o.price_eur)}</span><span class="shop">${best ? 'En ucuz · ' : ''}${esc(o.retailer)}${o.url ? ' <span aria-hidden="true">↗</span>' : ''}</span></div>`;
+      <div class="txt"><span class="price">${money(o.price_eur)}</span><span class="shop">${best ? 'En ucuz · ' : ''}${esc(o.retailer)}${out}${o.url ? ' <span aria-hidden="true">↗</span>' : ''}</span></div>`;
     return `<div class="lane ${cc}${best ? ' best' : ''}"><span class="cc" title="${label}">${cc}</span>${o.url
       ? `<a class="bar" href="${esc(o.url)}" target="_blank" rel="nofollow noopener" aria-label="${label}: ${esc(o.retailer)} sitesinde gör (yeni sekme)">${inner}</a>`
       : `<div class="bar">${inner}</div>`}</div>`;

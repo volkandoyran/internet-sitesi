@@ -50,7 +50,7 @@ test('CSS seçicileriyle çıkarım (JSON-LD yoksa)', () => {
   const html = `<h1 class="t"> Lenovo IdeaPad Slim 3 </h1><div class="fiyat">649,90 лв.</div><del class="eski">799,90</del><img class="ana" src="https://x/a.jpg"><span class="tukendi">Изчерпан</span>`;
   assert.equal(extractProduct(html, 'EUR'), null);
   const p = applySelectors(html, extractProduct(html, 'EUR'), { name: 'h1.t', price: '.fiyat', old_price: 'del.eski', image: 'img.ana@src', out_of_stock: '.tukendi' }, 'EUR');
-  assert.deepEqual(p, { name: 'Lenovo IdeaPad Slim 3', price: 649.9, currency: 'EUR', old_price: 799.9, image: 'https://x/a.jpg', in_stock: false, brand: null, mpn: null, description: null, store_category: null });
+  assert.deepEqual(p, { name: 'Lenovo IdeaPad Slim 3', price: 649.9, currency: 'EUR', old_price: 799.9, image: 'https://x/a.jpg', in_stock: false, brand: null, mpn: null, description: null, store_category: null, gtin: null, sku: null, source: 'selector' });
   // JSON-LD değeri seçiciden önce gelir
   const ld = `<script type="application/ld+json">{"@type":"Product","name":"A","offers":{"price":"10","priceCurrency":"EUR"}}</script><div class="fiyat">99</div>`;
   assert.equal(applySelectors(ld, extractProduct(ld, 'EUR'), { price: '.fiyat' }, 'EUR').price, 10);

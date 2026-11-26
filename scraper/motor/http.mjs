@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 // Dürüst bot kimliği: tarayıcı taklidi yapılmaz; mağaza robots.txt'de "UcfiyatBot" adıyla bizi ayrıca sınırlayabilir.
 export const BOT = 'UcfiyatBot';
-export const UA = `${BOT}/1.0 (+https://github.com/volkandoyran/internet-sitesi; fiyat karşılaştırma)`;
+export const UA = `${BOT}/1.0 (+https://github.com/volkandoyran/internet-sitesi; price comparison)`;
 const HEADERS = { 'user-agent': UA, 'accept-language': 'tr,el;q=0.8,bg;q=0.7,en;q=0.5', accept: 'text/html,application/xhtml+xml,application/xml' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
