@@ -68,5 +68,5 @@ export async function runMatching(SITE, auth, { dry = false } = {}) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
   if (!SITE || !process.env.ADMIN_PASSWORD) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
-  await runMatching(SITE, { authorization: 'Bearer ' + process.env.ADMIN_PASSWORD }, { dry: process.env.KURU === '1' });
+  await runMatching(SITE, { authorization: 'Bearer ' + (process.env.ADMIN_PASSWORD || '').trim() }, { dry: process.env.KURU === '1' });
 }

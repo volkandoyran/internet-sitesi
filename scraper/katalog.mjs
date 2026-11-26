@@ -15,7 +15,7 @@ import { runMatching } from './eslestir.mjs';
 import { Getirici, EngelHatasi, RobotsHatasi } from './motor/http.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
-const PW = process.env.ADMIN_PASSWORD;
+const PW = (process.env.ADMIN_PASSWORD || '').trim(); // gizli anahtara yanlışlıkla eklenen boşluk/satır sonu yok sayılır
 const DRY = process.env.KURU === '1';
 if (!DRY && (!SITE || !PW)) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
 const NEW_LIMIT = +process.env.YENI_LIMIT || 400;      // mağaza başına, çalıştırma başına yeni ürün sayfası
@@ -79,7 +79,10 @@ let plan = null;
 if (SITE && PW) {
   const r = await api('scraper/plan');
   if (r.ok) plan = r.data.retailers;
-  else console.warn('Plan alınamadı (site henüz güncellenmemiş olabilir):', r.status);
+  else if (r.status === 401 && !DRY) {
+    console.error('::error::Site şifreyi kabul etmedi (401). GitHub Actions ADMIN_PASSWORD gizli anahtarı Cloudflare Worker ADMIN_PASSWORD ile aynı olmalı.');
+    process.exit(1);
+  } else console.warn('Plan alınamadı (site henüz güncellenmemiş olabilir):', r.status);
 }
 // Plan yoksa (eski site ya da kuru deneme) koddaki tüm mağazalar adaydır
 if (!plan) plan = Object.keys(STORES).map((id) => ({ id, site: STORES[id].site || '', currency: STORES[id].currency || 'EUR', scrape: 1, due: true, config: null }));
@@ -208,7 +211,7 @@ async function runStore(r) {
     console.error(id, stat.blocked ? 'ENGELLENDİ:' : 'başarısız:', e.message);
   }
   stat.finished_at = new Date().toISOString();
-  stat.istek = net.requestsFor(cfg.site || r.site || '');
+  stat.istek = net.requestsFor(cfg.site || r.site || cfg.sitemapsFromRobots || (cfg.sitemaps || [])[0] || '');
   stat.sure_s = Math.round((Date.parse(stat.finished_at) - Date.parse(stat.started_at)) / 1000);
   return stat;
 }
