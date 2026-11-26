@@ -57,6 +57,17 @@ function perCountry(p) {
   return out;
 }
 
+// En ucuz ülke: stokta olan ülkeler arasından seçilir (stokta olmayan ucuz fiyat "en ucuz" sayılmaz).
+// Hiçbir ülkede stok yoksa tüm fiyatlar karşılaştırılır.
+export function cheapestOf(pc) {
+  const cs = Object.keys(pc);
+  const inStock = cs.filter((c) => pc[c].in_stock !== 0);
+  const pool = inStock.length ? inStock : cs;
+  const vals = pool.map((c) => pc[c].price_eur);
+  const min = Math.min(...vals);
+  return { cheapest: pool.find((c) => pc[c].price_eur === min), min, max: Math.max(...vals), pool };
+}
+
 function chips(p) {
   if (isPc(p)) {
     const sp = Object.fromEntries(computerSpecs(p).map((x) => [x.key, x.value]));
@@ -74,13 +85,15 @@ const storeLink = (o, label = 'Mağazada gör') => (o && o.url
 function lanes(p) {
   const pc = perCountry(p);
   const prices = Object.values(pc).map((o) => o.price_eur);
-  const max = Math.max(...prices, 1), min = Math.min(...prices);
+  const max = Math.max(...prices, 1);
+  const { cheapest } = cheapestOf(pc);
   return COUNTRIES.map(([cc, label]) => {
     const o = pc[cc];
     if (!o) return `<div class="lane ${cc} none"><span class="cc" title="${label}">${cc}</span><div class="bar"><div class="txt">Bu ülkede satıcı yok</div></div></div>`;
-    const best = prices.length > 1 && o.price_eur === min;
+    const best = prices.length > 1 && cc === cheapest;
+    const out = o.in_stock === 0 ? ' · Stokta yok' : '';
     const inner = `<div class="fill" style="width:${Math.round((o.price_eur / max) * 100)}%"></div>
-      <div class="txt"><span class="price">${money(o.price_eur)}</span><span class="shop">${best ? 'En ucuz · ' : ''}${esc(o.retailer)}${o.url ? ' <span aria-hidden="true">↗</span>' : ''}</span></div>`;
+      <div class="txt"><span class="price">${money(o.price_eur)}</span><span class="shop">${best ? 'En ucuz · ' : ''}${esc(o.retailer)}${out}${o.url ? ' <span aria-hidden="true">↗</span>' : ''}</span></div>`;
     return `<div class="lane ${cc}${best ? ' best' : ''}"><span class="cc" title="${label}">${cc}</span>${o.url
       ? `<a class="bar" href="${esc(o.url)}" target="_blank" rel="nofollow noopener" aria-label="${label}: ${esc(o.retailer)} sitesinde gör (yeni sekme)">${inner}</a>`
       : `<div class="bar">${inner}</div>`}</div>`;
@@ -146,7 +159,7 @@ ${body}
 
 export const NOTICE = `<div class="notice" role="note"><b>Bilgi:</b> Üçfiyat yalnızca fiyat karşılaştırma sitesidir, <b>satış yapmaz</b>. Ürünü almak için mağazanın kendi sitesine yönlendirilirsiniz.</div>`;
 
-const html = (s, status = 200) => new Response(s, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
+const html = (s, status = 200) => new Response(s, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, max-age=300' } });
 
 // ---------- Eşleşen modeller ----------
 export async function matchedPage(env) {
@@ -155,9 +168,9 @@ export async function matchedPage(env) {
     const pc = perCountry(p);
     const cs = Object.keys(pc);
     if (cs.length < 2) return null;
-    const vals = cs.map((c) => pc[c].price_eur);
-    const min = Math.min(...vals), max = Math.max(...vals);
-    return { p, pc, cheapest: cs.find((c) => pc[c].price_eur === min), min, max, save: max - min, pct: max ? Math.round(((max - min) / max) * 100) : 0 };
+    // Tasarruf yalnızca stokta olan ülkeler arasında hesaplanır
+    const { cheapest, min, max } = cheapestOf(pc);
+    return { p, pc, cheapest, min, max, save: max - min, pct: max ? Math.round(((max - min) / max) * 100) : 0 };
   }).filter(Boolean).sort((a, b) => b.pct - a.pct || b.save - a.save);
 
   // Bölümler: bilgisayarlar, parçalar, ekipman (monitör), telefonlar, tabletler; her birinde alt türler
@@ -265,9 +278,7 @@ export async function productPage(env, idPart, origin = SITE) {
 
   const pc = perCountry(p);
   const cs = Object.keys(pc);
-  const vals = cs.map((c) => pc[c].price_eur);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const cheapest = cs.find((c) => pc[c].price_eur === min);
+  const { cheapest, min, max } = cheapestOf(pc);
   const spec = isPc(p) ? computerSpecs(p) : [
     p.brand && { label: 'Marka', value: p.brand }, p.category && { label: 'Tür', value: CATEGORY[p.category] || p.category },
     p.cpu && { label: 'İşlemci', value: p.cpu }, p.gpu && { label: 'Ekran kartı', value: p.gpu }, p.ram_gb && { label: 'RAM', value: `${p.ram_gb} GB` },
@@ -331,5 +342,5 @@ export async function sitemap(env) {
 ${fixed.map((u) => `  <url><loc>${esc(SITE + u)}</loc><changefreq>daily</changefreq></url>`).join('\n')}
 ${prods.map((p) => `  <url><loc>${esc(SITE + productPath(p))}</loc>${day(p) ? `<lastmod>${day(p)}</lastmod>` : ''}<changefreq>daily</changefreq></url>`).join('\n')}
 </urlset>`;
-  return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
+  return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'private, max-age=3600' } });
 }

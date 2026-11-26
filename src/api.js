@@ -58,8 +58,21 @@ async function ads(env) {
   return Object.fromEntries(rows.map((r) => [r.key, r.value || '']));
 }
 
-// Ürünleri, aktif satıcılardaki teklifleriyle birlikte getir
-export async function loadProducts(env, where = '', binds = []) {
+// Ürünleri, aktif satıcılardaki teklifleriyle birlikte getir.
+// Tüm katalog (~5.000 ürün, ~8.000 teklif) her aramada yeniden okunmasın diye aynı Worker örneğinde 60 saniye saklanır;
+// eşzamanlı istekler aynı okumayı paylaşır. Fiyatlar zaten saatlik/6 saatlik turlarla değiştiği için gecikme fark edilmez.
+let catalogCache = null;
+export function loadProducts(env, where = '', binds = []) {
+  if (where) return readProducts(env, where, binds);
+  if (catalogCache && catalogCache.env === env.DB && Date.now() - catalogCache.at < 60e3) return catalogCache.promise;
+  const promise = readProducts(env);
+  catalogCache = { at: Date.now(), env: env.DB, promise };
+  promise.catch(() => { if (catalogCache && catalogCache.promise === promise) catalogCache = null; });
+  return promise;
+}
+export function clearProductCache() { catalogCache = null; }
+
+async function readProducts(env, where = '', binds = []) {
   const products = (await env.DB.prepare(`SELECT * FROM products ${where}`).bind(...binds).all()).results;
   if (!products.length) return [];
   const offers = (await env.DB.prepare(
@@ -67,7 +80,7 @@ export async function loadProducts(env, where = '', binds = []) {
             o.updated_at, r.name AS retailer, r.country
        FROM offers o JOIN retailers r ON r.id = o.retailer_id
       WHERE r.active = 1 AND o.price_eur IS NOT NULL
-        AND (o.manual = 1 OR o.updated_at >= datetime('now', '-14 days'))`  // 2 haftadır güncellenmeyen fiyat gösterilmez
+        AND (o.manual = 1 OR o.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'))`  // 2 haftadır güncellenmeyen fiyat gösterilmez (updated_at ISO biçiminde; datetime() ile karşılaştırma 1 güne kadar kayıyordu)
   ).all()).results;
   const byProduct = new Map();
   for (const o of offers) {
@@ -78,9 +91,11 @@ export async function loadProducts(env, where = '', binds = []) {
     const list = (byProduct.get(p.id) || []).sort((a, b) => a.price_eur - b.price_eur);
     const inStock = list.filter((o) => o.in_stock !== 0);
     // Eski kayıtlarda puan boş kalmış olabilir (ör. işlemci "M3"): adından yeniden hesaplanır
-    const cpu_score = p.cpu_score ?? (p.cpu ? cpuScore(p.cpu) : null);
+    // İşlemci dışındaki parçalarda "işlemci" bilgisi addaki "M.2" yuvasından yanlış çıkarılmıştı ("M2" Apple M2 sanıldı)
+    const cpu = p.type === 'part' && p.category !== 'cpu' ? null : p.cpu;
+    const cpu_score = cpu ? p.cpu_score ?? cpuScore(cpu) : null;
     const gpu_score = p.gpu_score ?? (p.gpu ? gpuScore(p.gpu) : null);
-    return { ...p, cpu_score, gpu_score, offers: list, best: (inStock[0] || list[0]) || null };
+    return { ...p, cpu, cpu_score, gpu_score, offers: list, best: (inStock[0] || list[0]) || null };
   }).filter((p) => p.offers.length); // fiyatı olmayan ürün sitede gösterilmez
 }
 
@@ -112,9 +127,11 @@ async function search(env, sp) {
   const typeOk = (p) => !filters.type || (GROUPS[filters.type] ? GROUPS[filters.type].includes(p.type) : p.type === filters.type);
 
   const all = await loadProducts(env);
+  // Sıralama ve bütçe, sitede "en ucuz" gösterilen fiyatla aynı olmalı: önce stoktaki en ucuz teklif
   const priceIn = (p) => {
     const list = filters.country ? p.offers.filter((o) => o.country === filters.country) : p.offers;
-    return list.length ? list[0].price_eur : null;
+    const o = list.find((x) => x.in_stock !== 0) || list[0];
+    return o ? o.price_eur : null;
   };
   const specOk = (p) =>
     typeOk(p) &&
@@ -200,6 +217,7 @@ function cleanProduct(body) {
 
 async function admin(parts, method, request, env, url) {
   const body = ['POST', 'PUT'].includes(method) ? await request.json().catch(() => ({})) : null;
+  if (method !== 'GET') clearProductCache(); // panelden yapılan değişiklik hemen görünsün
   const [res, id] = [parts[0], parts[1] ? +parts[1] : null];
 
   if (res === 'check') return json({ ok: true });
@@ -442,7 +460,11 @@ async function catalogUpsert(env, body) {
   for (const it of items) {
     if (!known.has(it.retailer_id)) continue;
     // Benzersizlik: aynı mağaza + aynı ürün bağlantısı tek teklif (yeniden eklenmez, güncellenir)
-    const offer = await env.DB.prepare('SELECT id, product_id, manual, price, currency FROM offers WHERE retailer_id = ? AND url = ?').bind(it.retailer_id, it.url).first();
+    const offer = await env.DB.prepare(
+      `SELECT o.id, o.product_id, o.manual, o.price, o.currency, p.type AS ptype, p.category AS pcat, p.storage_gb AS pstorage,
+              (SELECT COUNT(*) FROM offers x WHERE x.product_id = o.product_id) AS siblings
+         FROM offers o LEFT JOIN products p ON p.id = o.product_id WHERE o.retailer_id = ? AND o.url = ?`
+    ).bind(it.retailer_id, it.url).first();
     if (it.gone) {
       if (offer && !offer.manual) {
         await env.DB.batch([
@@ -466,7 +488,12 @@ async function catalogUpsert(env, body) {
     const eur = Math.round((it.price / rate) * 100) / 100;
     const oldPrice = it.old_price > it.price ? +it.old_price : null;
     const storeCat = it.store_category ? String(it.store_category).slice(0, 200) : null;
-    if (offer) {
+    // Yanlış birleştirilmiş teklif: mağazadaki ürün artık bağlı olduğu kayıtla aynı tür/kategori/kapasitede değil
+    // (ör. "HP Pro 400 ... i7-13700 16GB 512GB" masaüstü bir işlemci kaydına, 4 TB SSD 2 TB SSD kaydına bağlanmıştı).
+    // Teklif o kayıttan ayrılır ve aşağıda yeni ürün gibi yeniden bağlanır; diğer mağazaların teklifleri yerinde kalır.
+    let detach = null;
+    if (offer && !offer.manual && it.type && offer.siblings > 1 && wrongProduct(offer, it)) { detach = offer; }
+    if (offer && !detach) {
       if (offer.manual) continue;
       // Fiyat değişmediyse geçmişe satır yazılmaz; yalnızca kontrol zamanı ve stok güncellenir
       const moved = priceChanged(offer, it.price, currency);
@@ -486,14 +513,20 @@ async function catalogUpsert(env, body) {
     // Önce tarayıcının hesapladığı anahtarlar (üretici kodu, model + depolama, işlemci modeli...), sonra eski match_key.
     let productId = null;
     const keys = (Array.isArray(it.keys) ? it.keys : []).filter((k) => typeof k === 'string' && /^[A-Z0-9:А-Я+]{3,80}$/.test(k)).slice(0, 6);
+    // Disklerde kapasite de tutmalı (aynı serinin farklı kapasiteleri ayrı üründür)
+    const disk = it.type === 'part' && ['ssd', 'hdd'].includes(it.category) && +it.storage_gb > 0 ? +it.storage_gb : null;
+    const sizeSql = disk ? ' AND (storage_gb IS NULL OR storage_gb = ?)' : '';
+    const sizeArg = disk ? [disk] : [];
+    const notSelf = detach ? ' AND id != ?' : '';
+    const selfArg = detach ? [detach.product_id] : [];
     if (keys.length) {
       const p = await env.DB.prepare(
-        `SELECT id FROM products WHERE type = ? AND IFNULL(category, '') = IFNULL(?, '') AND (${keys.map(() => 'mkeys LIKE ?').join(' OR ')}) ORDER BY id LIMIT 1`
-      ).bind(it.type, it.category || null, ...keys.map((k) => `% ${k} %`)).first();
+        `SELECT id FROM products WHERE type = ? AND IFNULL(category, '') = IFNULL(?, '') AND (${keys.map(() => 'mkeys LIKE ?').join(' OR ')})${sizeSql}${notSelf} ORDER BY id LIMIT 1`
+      ).bind(it.type, it.category || null, ...keys.map((k) => `% ${k} %`), ...sizeArg, ...selfArg).first();
       if (p) { productId = p.id; out.linked++; }
     }
     if (!productId && it.match_key) {
-      const p = await env.DB.prepare('SELECT id FROM products WHERE match_key = ? AND type = ? LIMIT 1').bind(it.match_key, it.type).first();
+      const p = await env.DB.prepare(`SELECT id FROM products WHERE match_key = ? AND type = ?${sizeSql}${notSelf} LIMIT 1`).bind(it.match_key, it.type, ...sizeArg, ...selfArg).first();
       if (p) { productId = p.id; out.linked++; }
     }
     if (!productId) {
@@ -508,6 +541,15 @@ async function catalogUpsert(env, body) {
       const row = await env.DB.prepare(`INSERT INTO products (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) RETURNING id`)
         .bind(...cols.map((k) => p[k])).first();
       productId = row.id;
+    }
+    if (detach) {
+      // Teklif ve fiyat geçmişi korunur; yalnızca doğru ürüne taşınır
+      await env.DB.prepare('UPDATE offers SET product_id = ?, price = ?, currency = ?, price_eur = ?, in_stock = ?, old_price = ?, store_category = COALESCE(?, store_category), last_error = NULL, updated_at = ?, checked_at = ? WHERE id = ?')
+        .bind(productId, it.price, currency, eur, it.in_stock === false ? 0 : 1, oldPrice, storeCat, now, now, detach.id).run();
+      if (priceChanged(detach, it.price, currency)) await env.DB.prepare('INSERT INTO price_history (offer_id, price_eur, price, currency) VALUES (?, ?, ?, ?)').bind(detach.id, eur, it.price, currency).run();
+      out.detached = (out.detached || 0) + 1;
+      out.updated++;
+      continue;
     }
     const row = await env.DB.prepare(
       `INSERT INTO offers (product_id, retailer_id, url, price, currency, price_eur, in_stock, manual, updated_at, checked_at, old_price, store_category)
@@ -530,11 +572,24 @@ function refreshProduct(env, id, it) {
   const cols = ['cpu', 'cpu_score', 'gpu', 'gpu_score', 'ram_gb', 'storage_gb', 'screen_in'];
   // Mağaza sayfasındaki teknik özellikler mevcut olanlarla birleştirilir (aynı ürün birden çok mağazadan gelebilir)
   const sp = cleanSpecs(it.specs);
+  // Tek mağazalı üründe ad da mağazadakini izler (yanlış birleşmeden ayrılan kayıt eski adla kalmasın)
   return env.DB.prepare(`UPDATE products SET type = ?, category = ?, ${cols.map((c) => `${c} = COALESCE(?, ${c})`).join(', ')},
       specs = CASE WHEN ? IS NULL THEN specs ELSE json_patch(COALESCE(specs, '{}'), ?) END,
-      description = COALESCE(description, ?) WHERE id = ?`)
+      description = COALESCE(description, ?),
+      name = CASE WHEN ? IS NOT NULL AND (SELECT COUNT(*) FROM offers WHERE product_id = products.id) = 1 THEN ? ELSE name END WHERE id = ?`)
     .bind(it.type, it.category || null, ...cols.map((c) => p[c] ?? null), sp ? JSON.stringify(sp) : null, sp ? JSON.stringify(sp) : null,
-      cleanText(it.description, 1000), id);
+      cleanText(it.description, 1000), cleanText(it.name, 300), cleanText(it.name, 300), id);
+}
+
+// Mağazadan gelen ürün, teklifin bağlı olduğu kayıtla uyuşmuyor mu? (tür/kategori ya da disk kapasitesi farklı)
+export function wrongProduct(offer, it) {
+  if (!offer.ptype) return false;
+  if (offer.ptype !== it.type) return true;
+  if (it.type === 'part' && (offer.pcat || null) !== (it.category || null)) return true;
+  if (it.type === 'part' && ['ssd', 'hdd'].includes(it.category) && +offer.pstorage > 0 && +it.storage_gb > 0) {
+    return Math.abs(+offer.pstorage - +it.storage_gb) / Math.max(+offer.pstorage, +it.storage_gb) > 0.1; // 1000/1024 GB farkı sayılmaz
+  }
+  return false;
 }
 
 const cleanText = (v, max) => (typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim().slice(0, max) : null);
