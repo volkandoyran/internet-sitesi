@@ -9,13 +9,10 @@ const YIL = 365 * 24 * 3600;
 // Girişsiz açık kalan küçük dosyalar: ana ekrana eklenen kısayolun simgesi ve robots.txt
 const ACIK = new Set(['/robots.txt', '/icon.svg', '/icon-180.png', '/icon-512.png', '/manifest.webmanifest', '/favicon.ico']);
 
+import { esit, kilitli, yanlisDeneme, dogruDeneme, DENEME } from './guvenlik.js';
+
 const enc = new TextEncoder();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-
-async function esit(a, b) {
-  const [x, y] = await Promise.all([crypto.subtle.digest('SHA-256', enc.encode(a)), crypto.subtle.digest('SHA-256', enc.encode(b))]);
-  return crypto.subtle.timingSafeEqual(x, y);
-}
 
 // Çerez değeri: şifreyle imzalanmış sabit bir metin (şifrenin kendisi çerezde durmaz)
 async function oturumDegeri(pw) {
@@ -100,8 +97,16 @@ export async function kapi(request, env, url, basKodu = '') {
       // Telefon klavyelerinin eklediği baştaki/sondaki boşluklar yok sayılır
       const sifre = String((form && form.get('sifre')) || '').trim();
       const hedef = guvenliHedef(form && form.get('hedef'));
+      // Aynı IP'den çok sayıda yanlış deneme: şifre hiç denetlenmeden beklemeye alınır
+      const bekle = await kilitli(env, request, 'site');
+      if (bekle) {
+        const res = girisSayfasi(hedef, `Çok sayıda yanlış deneme. ${Math.ceil(bekle / 60)} dakika sonra tekrar deneyin.`, basKodu, 429);
+        res.headers.set('retry-after', String(bekle));
+        return res;
+      }
       const dogru = (await esit(sifre, sitePw.trim())) || (pw && (await esit(sifre, pw.trim())));
       if (dogru) {
+        await dogruDeneme(env, request, 'site');
         return new Response(null, {
           status: 303,
           headers: {
@@ -111,8 +116,9 @@ export async function kapi(request, env, url, basKodu = '') {
           },
         });
       }
+      await yanlisDeneme(env, request, 'site');
       await new Promise((r) => setTimeout(r, 800)); // tahmin denemelerini yavaşlat
-      return girisSayfasi(hedef, 'Şifre yanlış.', basKodu, 401);
+      return girisSayfasi(hedef, `Şifre yanlış. (${DENEME.pencereDk} dakikada en fazla ${DENEME.max} deneme)`, basKodu, 401);
     }
     return girisSayfasi(guvenliHedef(url.searchParams.get('hedef')), sitePw ? '' : 'Site şifresi ayarlanmamış (ADMIN_PASSWORD).', basKodu);
   }

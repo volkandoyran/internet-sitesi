@@ -1,14 +1,16 @@
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let token = '';
-try { token = sessionStorage.getItem('adm') || ''; } catch {}
+// Şifre tarayıcıda saklanmaz: girişte bir kez gönderilir, sunucu HttpOnly oturum çerezi verir (12 saat).
+// Eski sürümün sessionStorage'a yazdığı şifre silinir.
+try { sessionStorage.removeItem('adm'); } catch {}
 let retailers = [];
 let settings = {};
 
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api/admin/' + path, {
     method,
-    headers: { authorization: 'Bearer ' + token, ...(body ? { 'content-type': 'application/json' } : {}) },
+    credentials: 'same-origin',
+    headers: body ? { 'content-type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await r.json().catch(() => ({ error: 'Sunucudan geçersiz yanıt geldi.' }));
@@ -29,12 +31,20 @@ function showLogin(err = '') {
 }
 $('#login').addEventListener('submit', async (e) => {
   e.preventDefault();
-  token = e.target.pw.value;
-  try { await api('check'); } catch { return; }
-  try { sessionStorage.setItem('adm', token); } catch {}
-  start();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/admin/login', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: e.target.pw.value }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { $('#login-err').textContent = data.error || 'Giriş yapılamadı.'; return; }
+    e.target.reset();
+    start();
+  } catch { $('#login-err').textContent = 'Bağlantı hatası. Tekrar deneyin.'; } finally { btn.disabled = false; }
 });
-$('#logout').addEventListener('click', () => { token = ''; try { sessionStorage.removeItem('adm'); } catch {} showLogin(); });
+$('#logout').addEventListener('click', async () => {
+  await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+  showLogin();
+});
 
 document.querySelectorAll('[role=tab]').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('[role=tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
@@ -340,4 +350,5 @@ function renderAds() {
   });
 }
 
-if (token) api('check').then(start).catch(() => {}); else showLogin();
+// Açık oturum varsa doğrudan panele geç; yoksa (401) giriş formu gösterilir
+fetch('/api/admin/check', { credentials: 'same-origin' }).then((r) => (r.ok ? start() : showLogin())).catch(() => showLogin('Bağlantı hatası.'));
