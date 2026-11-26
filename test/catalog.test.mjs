@@ -44,7 +44,7 @@ test('eşleştirme anahtarı', () => {
 test('ürün sayfasından katalog bilgisi', () => {
   const html = `<html><head><meta property="og:image" content="https://x/i.jpg"></head><body>
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Product","name":"AMD Ryzen 7 7800X3D","mpn":"100-100000910","brand":{"@type":"Brand","name":"AMD"},"offers":{"@type":"Offer","price":16999,"priceCurrency":"TRY","availability":"https://schema.org/InStock"}}]}</script></body></html>`;
-  assert.deepEqual(extractProduct(html), { name: 'AMD Ryzen 7 7800X3D', brand: 'AMD', mpn: '100-100000910', image: 'https://x/i.jpg', price: 16999, currency: 'TRY', in_stock: true });
+  assert.deepEqual(extractProduct(html), { name: 'AMD Ryzen 7 7800X3D', brand: 'AMD', mpn: '100-100000910', image: 'https://x/i.jpg', price: 16999, currency: 'TRY', in_stock: true, old_price: null, description: null, store_category: null });
   const es = `<title>CPU AMD RYZEN 7 7800X3D - e-shop.gr</title><meta property="og:title" content="CPU AMD RYZEN 7 7800X3D 4.20GHZ 8-CORE BOXED"><meta property="product:brand" content="AMD"><span itemprop="price">309.90</span><meta itemprop="priceCurrency" content="EUR" />`;
   const p = extractProduct(es);
   assert.equal(p.name, 'CPU AMD RYZEN 7 7800X3D 4.20GHZ 8-CORE BOXED'); assert.equal(p.price, 309.9); assert.equal(p.currency, 'EUR');

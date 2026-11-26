@@ -44,7 +44,7 @@ document.querySelectorAll('[role=tab]').forEach((b) => b.addEventListener('click
 async function start() {
   $('#login').hidden = true; $('#app').hidden = false; $('#logout').hidden = false;
   [retailers, settings] = await Promise.all([api('retailers'), api('settings')]);
-  renderRetailers(); renderAds(); await renderProducts();
+  renderRetailers(); renderAds(); renderScraper(); await renderProducts();
 }
 
 // ---------- Ürünler ----------
@@ -97,6 +97,8 @@ async function renderProducts() {
         <p class="muted">Ürün sayfası bağlantısını ekleyin, fiyat her gün otomatik çekilir. Otomatik çekilemeyen satıcılar için “Elle” kutusunu işaretleyip fiyatı kendiniz girin.</p>
         <div class="scroll"><table><thead><tr><th>Satıcı</th><th>Bağlantı</th><th>Fiyat</th><th>Para</th><th></th><th>Son durum</th><th></th></tr></thead>
         <tbody>${p.offers.map((o) => offerRow(o, p.id)).join('')}${offerRow({}, p.id)}</tbody></table></div>
+        <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-act="history">Fiyat geçmişini göster</button></div>
+        <div class="hist"></div>
       </details>`).join('') || '<p class="muted">Henüz ürün yok. “Yeni ürün ekle” ile başlayın.</p>'}</div>`;
 
   $('#filter').addEventListener('input', (e) => {
@@ -122,6 +124,13 @@ async function renderProducts() {
       if (!confirm('Bu ürün ve tüm fiyatları silinsin mi?')) return;
       await api('products/' + d.dataset.id, 'DELETE'); toast('Ürün silindi'); d.remove();
     }
+    if (act === 'history') {
+      const d = e.target.closest('details');
+      const box = d.querySelector('.hist');
+      const h = await api('history/' + d.dataset.id);
+      box.innerHTML = historyTable(h);
+      return;
+    }
     const tr = e.target.closest('tr');
     if (act === 'save-offer') {
       const v = (n) => tr.querySelector(`[name=${n}]`);
@@ -144,6 +153,129 @@ async function renderProducts() {
   }));
   // Yalnızca yeni satırlar: kayıtlı tekliflerin para birimi değiştirilmez
   el.querySelectorAll('tr[data-id=""] select[name=retailer_id]').forEach((s) => s.dispatchEvent(new Event('change')));
+}
+
+const when = (t) => (t ? new Date(t).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+const money = (v, c) => (v == null ? '—' : `${(+v).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ${c === 'TRY' ? '₺' : c === 'EUR' || !c ? '€' : c}`);
+
+// Fiyat değişim geçmişi: yalnızca fiyatın değiştiği anlar kaydedilir
+function historyTable({ offers, history }) {
+  if (!offers.length) return '<p class="muted">Bu ürünün mağaza bağlantısı yok.</p>';
+  const byOffer = new Map(offers.map((o) => [o.id, o]));
+  return `<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Mağaza</th><th>Güncel</th><th>Eski fiyat</th><th>Son kontrol</th></tr></thead><tbody>
+    ${offers.map((o) => `<tr><td><a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.country)} · ${esc(o.retailer)}</a></td>
+      <td>${money(o.price, o.currency)}${o.in_stock === 0 ? ' <span class="muted">stokta yok</span>' : ''}</td>
+      <td>${o.old_price ? `<s>${money(o.old_price, o.currency)}</s> <span class="muted">−%${Math.round((1 - o.price / o.old_price) * 100)}</span>` : '—'}</td>
+      <td class="muted">${when(o.checked_at || o.updated_at)}${o.last_error ? `<div class="err">${esc(o.last_error)}</div>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <h4 style="margin:14px 0 4px;font-size:14px">Fiyat değişimleri (${history.length})</h4>
+    ${history.length ? `<div class="scroll"><table><thead><tr><th>Tarih</th><th>Mağaza</th><th>Fiyat</th><th>€</th></tr></thead><tbody>
+      ${history.map((h) => { const o = byOffer.get(h.offer_id) || {}; return `<tr><td>${when(h.at.includes('T') ? h.at : h.at.replace(' ', 'T') + 'Z')}</td><td>${esc(o.retailer || '')}</td><td>${h.price != null ? money(h.price, h.currency) : '—'}</td><td>${money(h.price_eur, 'EUR')}</td></tr>`; }).join('')}
+    </tbody></table></div>` : '<p class="muted">Henüz kayıt yok.</p>'}`;
+}
+
+// ---------- Veri toplama ----------
+const INTERVALS = [1, 2, 3, 4, 6, 8, 12, 24, 48];
+function storeState(r, now) {
+  if (!r.scrape) return ['off', 'Pasif'];
+  if (r.paused_until && r.paused_until > now) return ['warn', 'Duraklatıldı'];
+  if (r.run_requested) return ['', 'Sırada'];
+  if (r.last_error_at && (!r.last_ok_at || r.last_error_at > r.last_ok_at)) return ['warn', 'Hata'];
+  if (r.last_ok_at) return ['ok', 'Çalışıyor'];
+  return ['', 'Henüz çalışmadı'];
+}
+async function renderScraper() {
+  const el = $('#tab-scraper');
+  let st;
+  try { st = await api('scraper/status'); } catch { el.innerHTML = '<p class="err">Veri toplama durumu alınamadı.</p>'; return; }
+  const rs = st.retailers;
+  const sum = (k) => rs.reduce((n, r) => n + (r[k] || 0), 0);
+  const lastOk = rs.map((r) => r.last_ok_at).filter(Boolean).sort().pop();
+  const lastErr = rs.map((r) => r.last_error_at).filter(Boolean).sort().pop();
+  el.innerHTML = `
+    <div class="stats">
+      <div class="stat"><b>${rs.length}</b><span>mağaza</span></div>
+      <div class="stat"><b>${rs.filter((r) => r.scrape).length}</b><span>aktif toplayıcı</span></div>
+      <div class="stat"><b>${rs.filter((r) => r.paused_until && r.paused_until > st.now).length}</b><span>duraklatılmış (engel)</span></div>
+      <div class="stat"><b>${sum('offers').toLocaleString('tr-TR')}</b><span>toplanan fiyat</span></div>
+      <div class="stat"><b style="font-size:17px">${when(lastOk)}</b><span>son başarılı toplama</span></div>
+      <div class="stat"><b style="font-size:17px">${when(lastErr)}</b><span>son hata</span></div>
+    </div>
+    <div class="box"><div class="row" style="justify-content:space-between">
+      <p class="muted" style="margin:0;max-width:62ch">Toplayıcı kendi kodumuzla GitHub Actions'ta saatte bir uyanır ve yalnızca zamanı gelen mağazaları tarar. Ücretli servis kullanılmaz. Önce schema.org JSON-LD okunur, yoksa sayfa HTML'i ve aşağıdaki seçiciler. robots.txt'ye uyulur; 403/429/CAPTCHA gelirse mağaza duraklatılır, engel aşılmaya çalışılmaz. ${st.github ? '“Şimdi çalıştır” taramayı hemen başlatır.' : '“Şimdi çalıştır” mağazayı sıraya alır; en geç bir saat içinde taranır.'}</p>
+      <button class="btn" type="button" data-act="run-all">Hepsini şimdi çalıştır</button></div></div>
+    <div class="stores">${rs.map((r) => storeCard(r, st.now)).join('')}</div>
+    <form id="new-store" class="box"><h3 style="margin:0 0 10px;font-size:16px">Mağaza ekle</h3><div class="grid">
+      <label class="f">Kısa kimlik (ör. hepsiburada)<input name="id" required pattern="[a-z0-9-]+"></label>
+      <label class="f">Adı<input name="name" required></label>
+      <label class="f">Ülke<select name="country"><option>TR</option><option>GR</option><option>BG</option></select></label>
+      <label class="f">Site adresi<input name="site" type="url" placeholder="https://" required></label>
+      <label class="f">Tarama sıklığı<select name="interval_hours">${INTERVALS.map((h) => `<option value="${h}" ${h === 6 ? 'selected' : ''}>${h} saatte bir</option>`).join('')}</select></label></div>
+      <label class="f" style="margin-top:10px">Adaptör ayarı (isteğe bağlı, JSON)<textarea name="config" spellcheck="false" placeholder='{"urlPattern": "/urun/", "selectors": {"price": ".fiyat", "old_price": ".eski-fiyat"}}'></textarea>
+        <span class="muted" style="font-weight:400">Boş bırakılırsa site haritası robots.txt'den bulunur ve ürün sayfalarında JSON-LD okunur. Ayarlar: sitemaps, urlPattern, selectors (name, price, old_price, image@src, description, brand, in_stock, out_of_stock), render (JavaScript gerekiyorsa true), delayMs.</span></label>
+      <div class="row" style="margin-top:12px"><button class="btn" type="submit">Mağazayı ekle</button></div></form>
+    <div class="box"><h3 style="margin:0 0 8px;font-size:16px">Son çalıştırmalar</h3><div class="scroll"><table>
+      <thead><tr><th>Zaman</th><th>Mağaza</th><th>Sonuç</th><th>Sayfa</th><th>Yeni</th><th>Fiyatı değişen</th><th>Aynı</th><th>Hata</th></tr></thead><tbody>
+      ${st.runs.map((x) => `<tr><td>${when(x.finished_at || x.started_at)}</td><td>${esc(x.retailer_id)}</td>
+        <td>${x.ok ? '<span class="pill ok">Başarılı</span>' : x.blocked ? '<span class="pill warn">Engellendi</span>' : '<span class="pill warn">Hata</span>'}${x.message ? `<div class="${x.ok ? 'muted' : 'err'}">${esc(x.message)}</div>` : ''}</td>
+        <td>${x.pages}</td><td>${x.added}</td><td>${x.changed}</td><td>${x.unchanged}</td><td>${x.errors}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Henüz kayıt yok. İlk saatlik turdan sonra görünür.</td></tr>'}
+      </tbody></table></div></div>`;
+
+  el.onclick = async (e) => {
+    const act = e.target.dataset.act; if (!act) return;
+    const card = e.target.closest('[data-store]');
+    if (act === 'run-all' || act === 'run') {
+      e.target.disabled = true;
+      const r = await api('scraper/run/' + (act === 'run' ? card.dataset.store : 'all'), 'POST', {});
+      toast(r.started ? 'Tarama başlatıldı' : r.note || 'Sıraya alındı: en geç bir saat içinde taranacak');
+      return renderScraper();
+    }
+    if (act === 'resume') { await api('retailers/' + card.dataset.store, 'PUT', storeBody(card, { resume: true })); toast('Duraklatma kaldırıldı'); return renderScraper(); }
+  };
+  el.querySelectorAll('[data-store] input[type=checkbox], [data-store] select[name=interval_hours]').forEach((i) => i.addEventListener('change', async () => {
+    await api('retailers/' + i.closest('[data-store]').dataset.store, 'PUT', storeBody(i.closest('[data-store]')));
+    toast('Kaydedildi');
+  }));
+  el.querySelectorAll('form.store-edit').forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const card = f.closest('[data-store]');
+    await api('retailers/' + card.dataset.store, 'PUT', storeBody(card, { name: f.name.value.trim(), site: f.site.value.trim(), config: f.config.value.trim() }));
+    toast('Mağaza kaydedildi'); renderScraper();
+  }));
+  $('#new-store').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await api('retailers', 'POST', Object.fromEntries(new FormData(e.target)));
+    retailers = await api('retailers'); renderRetailers(); renderScraper(); toast('Mağaza eklendi');
+  });
+}
+function storeBody(card, extra = {}) {
+  return { active: card.querySelector('[name=active]').checked, scrape: card.querySelector('[name=scrape]').checked,
+    interval_hours: +card.querySelector('[name=interval_hours]').value, ...extra };
+}
+function storeCard(r, now) {
+  const [cls, label] = storeState(r, now);
+  const paused = r.paused_until && r.paused_until > now;
+  return `<div class="box store" data-store="${esc(r.id)}">
+    <h3><span>${esc(r.country)} · <a href="${esc(r.site)}" target="_blank" rel="noopener">${esc(r.name)}</a></span><span class="pill ${cls}">${label}</span></h3>
+    <dl class="kv">
+      <dt>Ürün / fiyat</dt><dd>${(r.products || 0).toLocaleString('tr-TR')} ürün · ${(r.offers || 0).toLocaleString('tr-TR')} fiyat${r.errors ? ` · <span class="err">${r.errors} hatalı bağlantı</span>` : ''}</dd>
+      <dt>Son başarılı</dt><dd>${when(r.last_ok_at)}</dd>
+      <dt>Son hata</dt><dd>${when(r.last_error_at)}${r.last_error ? `<div class="err">${esc(r.last_error)}</div>` : ''}</dd>
+      ${paused ? `<dt>Bekleme</dt><dd>${when(r.paused_until)} tarihine kadar</dd>` : ''}
+      <dt>Yöntem</dt><dd>${r.config?.render ? 'Playwright (JavaScript)' : 'HTTP + JSON-LD'}${r.config?.selectors ? ' + CSS seçiciler' : ''}</dd>
+    </dl>
+    <div class="row">
+      <label class="muted"><input type="checkbox" name="scrape" ${r.scrape ? 'checked' : ''} style="width:auto"> Toplayıcı aktif</label>
+      <label class="muted"><input type="checkbox" name="active" ${r.active ? 'checked' : ''} style="width:auto"> Sitede göster</label>
+      <select name="interval_hours" aria-label="Tarama sıklığı">${INTERVALS.map((h) => `<option value="${h}" ${h === (r.interval_hours || 6) ? 'selected' : ''}>${h} saatte bir</option>`).join('')}</select>
+    </div>
+    <div class="row"><button class="btn" type="button" data-act="run" ${r.scrape ? '' : 'disabled'}>Şimdi çalıştır</button>${paused ? '<button class="btn ghost" type="button" data-act="resume">Duraklatmayı kaldır</button>' : ''}</div>
+    <details><summary class="muted" style="cursor:pointer">Düzenle</summary><form class="store-edit panel" style="margin-top:8px">
+      <label class="f">Adı<input name="name" value="${esc(r.name)}"></label>
+      <label class="f">Site adresi<input name="site" type="url" value="${esc(r.site)}"></label>
+      <label class="f">Adaptör ayarı (JSON, boş = varsayılan)<textarea name="config" spellcheck="false">${esc(r.config ? JSON.stringify(r.config, null, 1) : '')}</textarea></label>
+      <div class="row"><button class="btn" type="submit">Kaydet</button></div></form></details>
+  </div>`;
 }
 
 // ---------- Satıcılar ----------

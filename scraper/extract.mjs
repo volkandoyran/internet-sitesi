@@ -1,10 +1,13 @@
+import { load as cheerioLoad } from 'cheerio';
+
 // HTML'den fiyat çıkarma. Önce schema.org JSON-LD (çoğu e-ticaret sitesi kullanır),
 // sonra meta etiketleri, sonra itemprop="price" denenir.
 
 export function parseNumber(raw) {
   if (raw == null) return null;
   if (typeof raw === 'number') return raw;
-  let s = String(raw).replace(/[^\d.,]/g, '');
+  // Baştaki/sondaki ayırıcılar atılır ("649,90 лв." sonundaki nokta ondalık sanılmasın)
+  let s = String(raw).replace(/[^\d.,]/g, '').replace(/^[.,]+|[.,]+$/g, '');
   if (!s) return null;
   const lastComma = s.lastIndexOf(','), lastDot = s.lastIndexOf('.');
   if (lastComma > -1 && lastDot > -1) {
@@ -41,9 +44,20 @@ function fromJsonLd(html) {
         const price = parseNumber(off.price ?? off.lowPrice ?? off.priceSpecification?.price);
         if (price) {
           const avail = String(off.availability || '');
-          return { price, currency: off.priceCurrency || null, in_stock: !/OutOfStock|SoldOut|Discontinued/i.test(avail) };
+          return { price, currency: off.priceCurrency || null, in_stock: !/OutOfStock|SoldOut|Discontinued/i.test(avail), old_price: strikePrice(off, price) };
         }
       }
+    }
+  }
+  return null;
+}
+
+// schema.org: indirim öncesi fiyat priceSpecification içinde StrikethroughPrice / ListPrice olarak verilir
+function strikePrice(off, price) {
+  for (const ps of [].concat(off.priceSpecification || [])) {
+    if (ps && /Strikethrough|ListPrice|MSRP/i.test(String(ps.priceType || ''))) {
+      const v = parseNumber(ps.price);
+      if (v && v > price) return v;
     }
   }
   return null;
@@ -69,7 +83,7 @@ export function extractPrice(html, fallbackCurrency) {
 
 const decodeEntities = (s) => String(s || '')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).trim();
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).trim();
 
 function jsonLdProduct(html) {
   for (const [, txt] of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
@@ -80,7 +94,10 @@ function jsonLdProduct(html) {
   return null;
 }
 
-// Ürün sayfasından katalog için gereken her şey: ad, marka, parça kodu, görsel, fiyat
+const stripTags = (h) => decodeEntities(String(h || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+// Ürün sayfasından katalog için gereken her şey: ad, marka, parça kodu, görsel, fiyat, eski fiyat, açıklama, kategori.
+// Önce schema.org JSON-LD, yoksa meta etiketleri ve bilinen HTML kalıpları. Bulunamayan alan null kalır (uydurulmaz).
 export function extractProduct(html, fallbackCurrency) {
   const ld = jsonLdProduct(html) || {};
   const first = (v) => (Array.isArray(v) ? v[0] : v);
@@ -100,7 +117,71 @@ export function extractProduct(html, fallbackCurrency) {
     if (price) found = { price, currency: meta(html, 'priceCurrency') || fallbackCurrency, in_stock: !inquiry };
   }
   if (!name || !found) return null;
-  return { name: name.slice(0, 300), brand: brand || null, mpn, image, ...found };
+  const description = stripTags(typeof ld.description === 'string' ? ld.description : '') || decodeEntities(meta(html, 'og:description') || meta(html, 'description') || '') || null;
+  return {
+    name: name.slice(0, 300), brand: brand || null, mpn, image, ...found,
+    old_price: found.old_price || htmlOldPrice(html, found.price),
+    description: description ? description.slice(0, 1000) : null,
+    store_category: breadcrumb(html, name) || (typeof ld.category === 'string' ? decodeEntities(ld.category).slice(0, 200) : null),
+  };
+}
+
+// Eski fiyat yalnızca ürüne ait olduğu kesin kaynaklardan: Open Graph "original_price" meta etiketi.
+// (Sayfadaki genel "old-price" sınıfları benzer ürün kutularına da ait olabildiği için kullanılmaz; gerekirse
+// mağaza ayarında old_price seçicisi girilir.) Yalnızca güncel fiyattan büyük ve 3 katından küçük değer kabul edilir.
+export function htmlOldPrice(html, price) {
+  for (const c of [meta(html, 'product:original_price:amount'), meta(html, 'og:original_price:amount')]) {
+    const v = parseNumber(c);
+    if (v && price && v > price && v < price * 3) return v;
+  }
+  return null;
+}
+
+// BreadcrumbList JSON-LD: "Bilgisayar > Dizüstü > Oyun" (ürünün kendi adı çıkarılır)
+export function breadcrumb(html, name) {
+  for (const [, txt] of String(html).matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    let data;
+    try { data = JSON.parse(txt.trim().replace(/[\u0000-\u001f]+/g, ' ')); } catch { continue; }
+    for (const n of walk(data)) {
+      if (!isType(n, 'breadcrumblist')) continue;
+      const items = [].concat(n.itemListElement || []).sort((a, b) => (+a.position || 0) - (+b.position || 0))
+        .map((e) => decodeEntities(e.name || e.item?.name || '')).filter(Boolean);
+      const parts = items.filter((x, i) => !(i === items.length - 1 && name && x.trim() === String(name).trim()));
+      if (parts.length) return parts.join(' > ').slice(0, 200);
+    }
+  }
+  return null;
+}
+
+// Mağaza ayarındaki CSS seçicileriyle eksik alanları doldurur (JSON-LD her zaman önce gelir).
+// Seçici "img.main@src" biçiminde bir özniteliği okuyabilir. in_stock / out_of_stock: öğe varsa stokta / stokta değil.
+export function applySelectors(html, base, selectors, fallbackCurrency) {
+  if (!selectors || !Object.keys(selectors).length) return base;
+  const $ = cheerioLoad(html);
+  const read = (sel) => {
+    if (!sel) return null;
+    const [css, attr] = String(sel).split('@');
+    const el = $(css).first();
+    if (!el.length) return null;
+    const v = attr ? el.attr(attr) : el.text();
+    return v ? String(v).replace(/\s+/g, ' ').trim() : null;
+  };
+  const out = { ...(base || {}) };
+  for (const k of ['name', 'brand', 'image', 'description', 'store_category']) if (!out[k] && selectors[k]) out[k] = read(selectors[k]);
+  if (!out.price && selectors.price) {
+    const v = parseNumber(read(selectors.price));
+    if (v) { out.price = v; out.currency = out.currency || fallbackCurrency; }
+  }
+  if (!out.old_price && selectors.old_price) {
+    const v = parseNumber(read(selectors.old_price));
+    if (v && out.price && v > out.price) out.old_price = v;
+  }
+  if (selectors.out_of_stock && $(selectors.out_of_stock).length) out.in_stock = false;
+  else if (selectors.in_stock) out.in_stock = $(selectors.in_stock).length > 0;
+  if (out.in_stock == null && out.price) out.in_stock = true;
+  if (!out.name || !out.price) return null;
+  for (const k of ['brand', 'mpn', 'image', 'old_price', 'description', 'store_category']) if (out[k] === undefined) out[k] = null;
+  return out;
 }
 
 // Ürün sayfasındaki özellik tablosundan (etiket, değer) çiftleri:

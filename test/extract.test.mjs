@@ -14,7 +14,7 @@ test('sayı biçimleri', () => {
 
 test('JSON-LD fiyatı', () => {
   const html = `<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Product","name":"X","offers":{"@type":"Offer","price":"1049.00","priceCurrency":"EUR","availability":"https://schema.org/OutOfStock"}}]}</script>`;
-  assert.deepEqual(extractPrice(html, 'EUR'), { price: 1049, currency: 'EUR', in_stock: false });
+  assert.deepEqual(extractPrice(html, 'EUR'), { price: 1049, currency: 'EUR', in_stock: false, old_price: null });
 });
 
 test('meta etiketi fiyatı', () => {

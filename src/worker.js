@@ -29,11 +29,47 @@ function ensureSchema(env) {
     if (!cols.includes('mkeys')) await env.DB.prepare('ALTER TABLE products ADD COLUMN mkeys TEXT').run();
     // Mağaza sayfalarından okunan teknik özellikler
     if (!cols.includes('specs')) await env.DB.prepare('ALTER TABLE products ADD COLUMN specs TEXT').run();
+    await migrateScraper(env);
   })().catch((e) => { ready = null; throw e; });
   return ready;
 }
 
-const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+// Kendi veri toplama motoru için eklenen sütunlar ve tablo (26 Kasım 2026).
+// Yalnızca ekleme yapar: mevcut veriye dokunmaz, tekrar çalıştırmak güvenlidir.
+export const SCRAPER_COLUMNS = [
+  ['products', 'description', 'TEXT'],
+  ['offers', 'old_price', 'REAL'],
+  ['offers', 'store_category', 'TEXT'],
+  ['offers', 'checked_at', 'TEXT'],
+  ['price_history', 'price', 'REAL'],
+  ['price_history', 'currency', 'TEXT'],
+  ['retailers', 'interval_hours', 'INTEGER NOT NULL DEFAULT 6'],
+  ['retailers', 'config', 'TEXT'],
+  ['retailers', 'run_requested', 'INTEGER NOT NULL DEFAULT 0'],
+  ['retailers', 'last_run_at', 'TEXT'],
+  ['retailers', 'last_ok_at', 'TEXT'],
+  ['retailers', 'last_error_at', 'TEXT'],
+  ['retailers', 'last_error', 'TEXT'],
+  ['retailers', 'paused_until', 'TEXT'],
+  ['retailers', 'fail_count', 'INTEGER NOT NULL DEFAULT 0'],
+];
+async function migrateScraper(env) {
+  const have = {};
+  for (const t of new Set(SCRAPER_COLUMNS.map((c) => c[0]))) {
+    have[t] = new Set((await env.DB.prepare(`PRAGMA table_info(${t})`).all()).results.map((c) => c.name));
+  }
+  const stmts = SCRAPER_COLUMNS.filter(([t, c]) => !have[t].has(c))
+    .map(([t, c, def]) => env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`));
+  stmts.push(env.DB.prepare(`CREATE TABLE IF NOT EXISTS scrape_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, retailer_id TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
+    ok INTEGER NOT NULL DEFAULT 0, blocked INTEGER NOT NULL DEFAULT 0, pages INTEGER NOT NULL DEFAULT 0,
+    added INTEGER NOT NULL DEFAULT 0, changed INTEGER NOT NULL DEFAULT 0, unchanged INTEGER NOT NULL DEFAULT 0,
+    errors INTEGER NOT NULL DEFAULT 0, message TEXT)`));
+  stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at)'));
+  await env.DB.batch(stmts);
+}
+
+const safeDecode =(s) => { try { return decodeURIComponent(s); } catch { return s; } };
 
 async function setting(env, key) {
   try {

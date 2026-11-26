@@ -1,17 +1,16 @@
-// Günlük fiyat çekici. GitHub Actions'ta çalışır.
-// 1) Siteden takip edilen ürün bağlantılarını alır, 2) her sayfadan fiyatı okur,
-// 3) TRY kurunu alır, 4) sonuçları siteye geri yazar.
-// Gerekli ortam değişkenleri: SITE_URL (ör. https://ucfiyat.<hesap>.workers.dev), ADMIN_PASSWORD
-import { extractPrice } from './extract.mjs';
-import { STORES, FC_STORES } from './stores.mjs';
+// Elle eklenen bağlantıların fiyat çekicisi. GitHub Actions'ta çalışır.
+// Katalog motoru (katalog.mjs) site haritası olan her mağazanın bağlantılarını zaten günceller; bu betik yalnızca
+// site haritası / site adresi tanımlı olmayan mağazalara elle eklenmiş ürün bağlantılarını kontrol eder.
+// Gerekli ortam değişkenleri: SITE_URL, ADMIN_PASSWORD
+import { extractPrice, htmlOldPrice } from './extract.mjs';
+import { adapterFor } from './stores.mjs';
+import { Getirici, EngelHatasi } from './motor/http.mjs';
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
 const PW = process.env.ADMIN_PASSWORD;
 if (!SITE || !PW) { console.error('SITE_URL ve ADMIN_PASSWORD gerekli.'); process.exit(1); }
-
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
 const auth = { authorization: 'Bearer ' + PW };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const net = new Getirici({ delayMs: 2500 });
 
 async function rates() {
   // Avrupa Merkez Bankası kurları (ücretsiz, anahtar gerektirmez)
@@ -19,46 +18,40 @@ async function rates() {
     try {
       const j = await (await fetch(u, { signal: AbortSignal.timeout(15000) })).json();
       if (j.rates && j.rates.TRY > 0) return { TRY: j.rates.TRY };
-    } catch (e) {
-      console.warn('Kur alınamadı:', u, e.message);
-    }
+    } catch (e) { console.warn('Kur alınamadı:', u, e.message); }
   }
   return {};
 }
 
-async function fetchPage(url) {
-  const r = await fetch(url, {
-    headers: { 'user-agent': UA, 'accept-language': 'tr,el;q=0.8,bg;q=0.7,en;q=0.5', accept: 'text/html,application/xhtml+xml' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(25000),
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}${r.status === 403 || r.status === 429 ? ' (bot koruması engelledi)' : ''}`);
-  return r.text();
-}
-
+const retailers = await (await fetch(`${SITE}/api/admin/retailers`, { headers: auth })).json();
+const covered = new Set((Array.isArray(retailers) ? retailers : []).filter((r) => {
+  let config = null;
+  try { config = r.config ? JSON.parse(r.config) : null; } catch {}
+  return adapterFor({ ...r, config }).hasSource;
+}).map((r) => r.id));
 const allOffers = await (await fetch(`${SITE}/api/admin/offers`, { headers: auth })).json();
 if (!Array.isArray(allOffers)) { console.error('Teklif listesi alınamadı:', allOffers); process.exit(1); }
-// Otomatik katalogdaki mağazaları katalog tarayıcısı günceller
-const offers = allOffers.filter((o) => !STORES[o.retailer_id] && !(FC_STORES[o.retailer_id] && !o.manual));
-console.log(`${offers.length} bağlantı kontrol edilecek`);
+const offers = allOffers.filter((o) => !covered.has(o.retailer_id));
+console.log(`${offers.length} elle eklenmiş bağlantı kontrol edilecek`);
+if (!offers.length) process.exit(0);
 
-// Aynı siteye art arda yüklenmemek için satıcı başına sırayla, satıcılar arası paralel
+// Aynı siteye art arda yüklenmemek için satıcı başına sırayla, satıcılar arası paralel; engelde o satıcı bırakılır
 const byRetailer = {};
 for (const o of offers) (byRetailer[o.retailer_id] ||= []).push(o);
 const results = [];
 await Promise.all(Object.values(byRetailer).map(async (list) => {
   for (const o of list) {
     try {
-      const html = await fetchPage(o.url);
+      const html = await net.page(o.url);
       const found = extractPrice(html, o.currency);
       if (!found) throw new Error('Sayfada fiyat bulunamadı');
-      results.push({ id: o.id, price: found.price, currency: found.currency || o.currency, in_stock: found.in_stock });
+      results.push({ id: o.id, price: found.price, currency: found.currency || o.currency, in_stock: found.in_stock, old_price: found.old_price || htmlOldPrice(html, found.price) });
       console.log(`✓ ${o.retailer_id} ${found.price} ${found.currency || o.currency}`);
     } catch (e) {
       results.push({ id: o.id, error: e.message });
       console.log(`✗ ${o.retailer_id} ${o.url}: ${e.message}`);
+      if (e instanceof EngelHatasi) { for (const x of list.slice(list.indexOf(o) + 1)) results.push({ id: x.id, error: 'Atlandı: mağaza engelledi' }); break; }
     }
-    await sleep(2500 + Math.random() * 2000);
   }
 }));
 
