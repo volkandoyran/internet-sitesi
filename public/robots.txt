@@ -1,5 +1,3 @@
+# Bu site özeldir; arama motorları taramasın.
 User-agent: *
-Allow: /
-Disallow: /admin
-
-Sitemap: https://ucfiyat.vitrin-web.workers.dev/sitemap.xml
+Disallow: /

@@ -12,7 +12,7 @@ const sayi = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Nu
 export const gorselAyarlari = (env) => ({
   limit: sayi(env.GORSEL_LIMIT, 9),        // görsel çalışması başına haber (ücretsiz planın 50 alt istek sınırına sığar)
   aiLimit: sayi(env.GORSEL_AI_LIMIT, 3),   // çalışma başına yapay zekâ görseli
-  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 35), // 24 saatte en fazla yapay zekâ görseli (~104 nöron/adet; ücretsiz 10.000 nöron metinlerle paylaşılıyor)
+  aiGunluk: sayi(env.GORSEL_AI_GUNLUK, 30), // 24 saatte en fazla yapay zekâ görseli (~104 nöron/adet; ücretsiz 10.000 nöron metinlerle paylaşılıyor)
   saklaGun: sayi(env.SAKLA_GUN, 7),
 });
 
@@ -116,7 +116,13 @@ export async function aiGorsel(env, id, sahne, baslik) {
 export async function gorselleriDoldur(env, rapor = {}) {
   if (!env.AI) return rapor;
   const a = gorselAyarlari(env);
-  const { results } = await env.DB.prepare(`SELECT h.id, h.baslik, h.metin FROM haberler h
+  // Günde ~1000 haber geliyor, hepsine görsel aranamaz: 24 saatten eski, görseli olmayan haberler yapay zekâ
+  // harcamadan kalıcı olarak kapak görseline (yok) bırakılır; arama yalnızca son 24 saatin haberlerinde yapılır.
+  const eski = "strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')";
+  await env.DB.prepare(`INSERT OR REPLACE INTO gorseller (haber_id, tur) SELECT h.id, 'yok' FROM haberler h
+    LEFT JOIN gorseller g ON g.haber_id = h.id
+    WHERE h.metin IS NOT NULL AND h.ilk_gorulme < ${eski} AND (g.haber_id IS NULL OR g.tur = 'bekle')`).run();
+  const { results } = await env.DB.prepare(`SELECT h.id, h.baslik, h.metin, h.ilk_gorulme FROM haberler h
     LEFT JOIN gorseller g ON g.haber_id = h.id
     WHERE h.metin IS NOT NULL AND (g.haber_id IS NULL OR (g.tur = 'bekle' AND g.zaman < strftime('%Y-%m-%dT%H:%M:%fZ','now','-12 hours')))
     ORDER BY h.kaynak_sayisi DESC, h.ilk_gorulme DESC LIMIT ?`).bind(a.limit).all();
@@ -138,7 +144,8 @@ export async function gorselleriDoldur(env, rapor = {}) {
         (rapor.kisiler ||= []).push(`${h.id}:${kisi || '-'}`);
         if (kisi) sonuc = await wikiFoto(kisi).catch((e) => { (rapor.hatalar ||= []).push(`Wikipedia ${h.id}: ${e.message || e}`); return null; });
         if (!sonuc && ai > 0) { ai--; sonuc = await aiGorsel(env, h.id, typeof j.sahne === 'string' ? j.sahne : '', h.baslik); }
-        if (!sonuc) sonuc = { tur: 'bekle', url: null, atif: null };
+        // Yapay zekâ hakkı yoksa: yeni haber (24 saatten genç) sonra yeniden denenir, eskisi kalıcı olarak kapak görseliyle kalır
+        if (!sonuc) sonuc = { tur: Date.parse(h.ilk_gorulme) > Date.now() - 24 * SAAT ? 'bekle' : 'yok', url: null, atif: null };
       }
     } catch (e) {
       (rapor.hatalar ||= []).push(`Görsel ${h.id}: ${e.message || e}`);
