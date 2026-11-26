@@ -192,6 +192,7 @@ test('görsel çalışması: wiki, yapay zekâ, bekle ve şehit ayrımı; günl�
         run: async () => { yazilan.push(a); },
       }),
       first: async () => ({ n: 0 }),
+      run: async () => {},
     }) },
     AI: { run: async (model) => model.includes('flux') ? { image: btoa('jpg') }
       : { response: '{"kisi": "", "sahne": "rainy street"}' } },

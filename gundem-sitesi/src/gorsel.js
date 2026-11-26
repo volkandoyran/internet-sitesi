@@ -116,6 +116,12 @@ export async function aiGorsel(env, id, sahne, baslik) {
 export async function gorselleriDoldur(env, rapor = {}) {
   if (!env.AI) return rapor;
   const a = gorselAyarlari(env);
+  // Günde ~1000 haber geliyor, hepsine görsel aranamaz: 24 saatten eski, görseli olmayan haberler yapay zekâ
+  // harcamadan kalıcı olarak kapak görseline (yok) bırakılır; arama yalnızca son 24 saatin haberlerinde yapılır.
+  const eski = "strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')";
+  await env.DB.prepare(`INSERT OR REPLACE INTO gorseller (haber_id, tur) SELECT h.id, 'yok' FROM haberler h
+    LEFT JOIN gorseller g ON g.haber_id = h.id
+    WHERE h.metin IS NOT NULL AND h.ilk_gorulme < ${eski} AND (g.haber_id IS NULL OR g.tur = 'bekle')`).run();
   const { results } = await env.DB.prepare(`SELECT h.id, h.baslik, h.metin, h.ilk_gorulme FROM haberler h
     LEFT JOIN gorseller g ON g.haber_id = h.id
     WHERE h.metin IS NOT NULL AND (g.haber_id IS NULL OR (g.tur = 'bekle' AND g.zaman < strftime('%Y-%m-%dT%H:%M:%fZ','now','-12 hours')))
