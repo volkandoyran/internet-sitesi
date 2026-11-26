@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS offers (
 CREATE INDEX IF NOT EXISTS offers_product ON offers(product_id);
 CREATE INDEX IF NOT EXISTS offers_url ON offers(retailer_id, url);
 CREATE INDEX IF NOT EXISTS products_match ON products(match_key);
+CREATE INDEX IF NOT EXISTS products_type ON products(type, category);
 
 CREATE TABLE IF NOT EXISTS price_history (
   offer_id  INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,

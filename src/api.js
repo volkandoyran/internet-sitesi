@@ -70,10 +70,14 @@ export function loadProducts(env, where = '', binds = []) {
   promise.catch(() => { if (catalogCache && catalogCache.promise === promise) catalogCache = null; });
   return promise;
 }
-export function clearProductCache() { catalogCache = null; }
+export function clearProductCache() { catalogCache = null; searchCache.clear(); }
+// Bellekteki tam katalog hâlâ tazeyse onun sözü (yoksa null)
+function cachedCatalog(env) {
+  return catalogCache && catalogCache.env === env.DB && Date.now() - catalogCache.at < 60e3 ? catalogCache.promise : null;
+}
 
 async function readProducts(env, where = '', binds = []) {
-  const products = (await env.DB.prepare(`SELECT * FROM products ${where}`).bind(...binds).all()).results;
+  const products = (await env.DB.prepare(`SELECT * FROM products ${where} ORDER BY id`).bind(...binds).all()).results;
   if (!products.length) return [];
   const offers = (await env.DB.prepare(
     `SELECT o.id, o.product_id, o.retailer_id, o.url, o.price, o.currency, o.price_eur, o.in_stock,
@@ -81,7 +85,9 @@ async function readProducts(env, where = '', binds = []) {
        FROM offers o JOIN retailers r ON r.id = o.retailer_id
       WHERE r.active = 1 AND o.price_eur IS NOT NULL
         AND (o.manual = 1 OR o.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'))`  // 2 haftadır güncellenmeyen fiyat gösterilmez (updated_at ISO biçiminde; datetime() ile karşılaştırma 1 güne kadar kayıyordu)
-  ).all()).results;
+    // Süzülmüş okumada yalnızca o ürünlerin teklifleri okunur (offers_product dizini)
+    + (where ? ` AND o.product_id IN (SELECT id FROM products ${where})` : '')
+  ).bind(...(where ? binds : [])).all()).results;
   const byProduct = new Map();
   for (const o of offers) {
     if (!byProduct.has(o.product_id)) byProduct.set(o.product_id, []);
@@ -97,6 +103,81 @@ async function readProducts(env, where = '', binds = []) {
     const gpu_score = p.gpu_score ?? (p.gpu ? gpuScore(p.gpu) : null);
     return { ...p, cpu, cpu_score, gpu_score, offers: list, best: (inStock[0] || list[0]) || null };
   }).filter((p) => p.offers.length); // fiyatı olmayan ürün sitede gösterilmez
+}
+
+// ---------- Hedefli okuma (D1 maliyeti) ----------
+// Tek ürün: kimlikle doğrudan (tüm katalog okunmaz)
+export async function productById(env, id) {
+  const fresh = cachedCatalog(env);
+  if (fresh) return (await fresh).find((x) => x.id === id) || null;
+  return (await readProducts(env, 'WHERE id = ?', [id]))[0] || null;
+}
+
+// Benzer ürünler: aynı tür (parçada aynı kategori) içinden en yakın özellikler; katalog bellekteyse ondan
+export async function similarTo(env, p, n) {
+  const fresh = cachedCatalog(env);
+  const pool = fresh ? await fresh
+    : await readProducts(env, p.type === 'part' ? 'WHERE type = ? AND category IS ?' : 'WHERE type = ?', p.type === 'part' ? [p.type, p.category ?? null] : [p.type]);
+  return pool
+    .filter((x) => x.id !== p.id && x.type === p.type && (p.type !== 'part' || x.category === p.category) && x.offers.length)
+    .map((x) => ({ x, d: distance(p, x) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, n)
+    .map((s) => s.x);
+}
+
+// Aramadaki kelimelerin SQL LIKE kalıpları. Yalnızca ASCII kelimeler kullanılır (SQLite LIKE büyük/küçük harfi yalnızca
+// ASCII'de eşler); Türkçe İ/ı ve Kelvin işareti küçük harfe çevrilince i/k olduğu için bu harfler "_" (tek karakter) olur.
+// Böylece SQL süzgeci JS'teki eşleşmenin her zaman üst kümesidir.
+const SQL_SPEC_WORD = /^(\d+(gb|tb)|gb|tb|ram|ssd|nvme|hdd|ddr\d?|(rtx|gtx|rx)\d{0,4}|i[3579](-\d+)?|ryzen|core|ultra|laptop|notebook|dizüstü|masaüstü|desktop|pc|telefon|tablet)$/;
+export function sqlWords(q) {
+  const low = (t) => String(t || '').replace(/İ/g, 'i').toLowerCase().replace(/ı/g, 'i');
+  const raw = low(q).split(/\s+/).filter(Boolean);
+  return raw
+    .filter((w, i) => w.length > 1 && !SQL_SPEC_WORD.test(w) && !(/^\d{1,4}$/.test(w) && i > 0 && /^(ryzen|core|ultra|i[3579]|ram|ddr\d?|rtx|gtx|rx)$/.test(raw[i - 1])))
+    .filter((w) => /^[\x21-\x7e]+$/.test(w))
+    .map((w) => '%' + w.replace(/[\\%_]/g, (c) => '\\' + c).replace(/[ik]/g, '_') + '%');
+}
+
+const VISIBLE_OFFER = `SELECT 1 FROM offers o JOIN retailers r ON r.id = o.retailer_id WHERE o.product_id = products.id AND r.active = 1
+  AND o.price_eur IS NOT NULL AND (o.manual = 1 OR o.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'))`;
+
+export function searchWhere(filters, likes = []) {
+  const w = [], b = [];
+  const GROUPS = { computer: ['laptop', 'desktop'], mobile: ['phone', 'tablet'] };
+  if (filters.type) {
+    const t = GROUPS[filters.type] || [filters.type];
+    w.push(`type IN (${t.map(() => '?').join(',')})`); b.push(...t);
+  }
+  if (filters.category) { w.push('category = ?'); b.push(filters.category); }
+  if (filters.ram_gb) { w.push('ram_gb >= ?'); b.push(filters.ram_gb); }
+  if (filters.storage_gb) { w.push('storage_gb >= ?'); b.push(filters.storage_gb * 0.95); }
+  // Puan boşsa JS addan hesaplayabilir: boş olanlar elenmez
+  if (filters.cpu_score) { w.push('(cpu_score >= ? OR cpu_score IS NULL)'); b.push(filters.cpu_score); }
+  if (filters.gpu_score) { w.push('(gpu_score >= ? OR gpu_score IS NULL)'); b.push(filters.gpu_score); }
+  for (const l of likes.slice(0, 8)) { w.push(`(name || ' ' || IFNULL(brand, '') || ' ' || IFNULL(cpu, '') || ' ' || IFNULL(gpu, '')) LIKE ? ESCAPE '\\'`); b.push(l); }
+  if (filters.budget) {
+    w.push(`EXISTS (${VISIBLE_OFFER} AND o.price_eur <= ?${filters.country ? ' AND r.country = ?' : ''})`);
+    b.push(filters.budget, ...(filters.country ? [filters.country] : []));
+  }
+  return { where: w.length ? 'WHERE ' + w.join(' AND ') : '', binds: b };
+}
+
+// Arama adayları: aynı Worker örneğinde aynı süzgeç 60 sn saklanır (aynı aramayı tekrar okumaz)
+const searchCache = new Map();
+async function searchCandidates(env, filters, likes) {
+  const { where, binds } = searchWhere(filters, likes);
+  if (!where) return loadProducts(env);
+  const fresh = cachedCatalog(env);
+  if (fresh) return fresh; // tüm katalog zaten bellekteyse veritabanına hiç gidilmez
+  const key = where + '|' + JSON.stringify(binds);
+  const hit = searchCache.get(key);
+  if (hit && hit.db === env.DB && Date.now() - hit.at < 60e3) return hit.promise;
+  const promise = readProducts(env, where, binds);
+  if (searchCache.size > 100) searchCache.delete(searchCache.keys().next().value);
+  searchCache.set(key, { at: Date.now(), db: env.DB, promise });
+  promise.catch(() => searchCache.delete(key));
+  return promise;
 }
 
 async function search(env, sp) {
@@ -126,7 +207,9 @@ async function search(env, sp) {
   const GROUPS = { computer: ['laptop', 'desktop'], mobile: ['phone', 'tablet'] };
   const typeOk = (p) => !filters.type || (GROUPS[filters.type] ? GROUPS[filters.type].includes(p.type) : p.type === filters.type);
 
-  const all = await loadProducts(env);
+  // Yalnızca aday ürünler okunur (tür, kategori, özellik, bütçe ve ASCII kelimeler SQL'de süzülür).
+  // SQL süzgeci her zaman JS kurallarından geniştir; son karar aşağıdaki aynı JS kurallarıyla verilir, sonuçlar değişmez.
+  const all = await searchCandidates(env, filters, sqlWords(q));
   // Sıralama ve bütçe, sitede "en ucuz" gösterilen fiyatla aynı olmalı: önce stoktaki en ucuz teklif
   const priceIn = (p) => {
     const list = filters.country ? p.offers.filter((o) => o.country === filters.country) : p.offers;
@@ -162,6 +245,8 @@ async function search(env, sp) {
   let similar = [];
   let note = null;
   if (!exact.length) {
+    // Birebir sonuç yoksa öneriler tüm katalogdan hesaplanır (eski davranış; katalog 60 sn bellekte)
+    const all = await loadProducts(env);
     const partial = words.length
       ? all.filter((p) => words.some((w) => w.length > 2 && hit(hay(p), w)))
       : [];
@@ -181,15 +266,10 @@ async function search(env, sp) {
 }
 
 async function productDetail(env, id) {
-  const all = await loadProducts(env);
-  const p = all.find((x) => x.id === id);
+  if (!Number.isSafeInteger(id) || id <= 0) return fail('Ürün bulunamadı', 404);
+  const p = await productById(env, id);
   if (!p) return fail('Ürün bulunamadı', 404);
-  const similar = all
-    .filter((x) => x.id !== id && x.type === p.type && (p.type !== 'part' || x.category === p.category) && x.offers.length)
-    .map((x) => ({ x, d: distance(p, x) }))
-    .sort((a, b) => a.d - b.d)
-    .slice(0, 6)
-    .map((s) => s.x);
+  const similar = await similarTo(env, p, 6);
   const history = (await env.DB.prepare(
     `SELECT h.offer_id, h.price_eur, h.at FROM price_history h
        JOIN offers o ON o.id = h.offer_id WHERE o.product_id = ? ORDER BY h.at`

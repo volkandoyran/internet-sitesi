@@ -66,6 +66,8 @@ async function migrateScraper(env) {
     added INTEGER NOT NULL DEFAULT 0, changed INTEGER NOT NULL DEFAULT 0, unchanged INTEGER NOT NULL DEFAULT 0,
     errors INTEGER NOT NULL DEFAULT 0, message TEXT)`));
   stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS runs_retailer ON scrape_runs(retailer_id, started_at)'));
+  // Aramada tür/kategori süzgeci tüm ürün tablosunu taramasın (26 Kasım D1 iyileştirmesi)
+  stmts.push(env.DB.prepare('CREATE INDEX IF NOT EXISTS products_type ON products(type, category)'));
   await env.DB.batch(stmts);
 }
 
