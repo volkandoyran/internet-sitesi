@@ -2,7 +2,7 @@
 // (ör. Yunanistan'da "KINHTO IPHONE 17 PRO MAX 256GB", Bulgaristan'da "Смартфон Apple iPhone 17 Pro Max ... 256GB")
 // ortak anahtarı olanlar tek üründe toplanır; böylece fiyatlar yan yana görünür.
 // Anahtarlar burada (GitHub Actions'ta) hesaplanır; site yalnızca birleştirme sorgularını çalıştırır.
-import { modelKeys } from '../lib/catalog.js';
+import { modelKeys, compatible } from '../lib/catalog.js';
 
 // Aynı tür/kategoride ortak anahtarı olan ürünleri gruplar. Dönüş: { merges: [{keep, drop}], keys: [{id, mkeys}] }
 export function planMatches(products) {
@@ -10,14 +10,21 @@ export function planMatches(products) {
   const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
   const owner = new Map();
   const keysOf = new Map();
+  const members = new Map(); // grup kökü -> ürünler (varyant kontrolü için)
+  const fits = (ra, rb) => members.get(ra).every((x) => members.get(rb).every((y) => compatible(x, y)));
   for (const p of products) {
     parent.set(p.id, p.id);
+    members.set(p.id, [p]);
     // Önceki birleştirmelerden gelen anahtarlar korunur (birleşen diğer adların anahtarları)
     const keys = [...new Set([...modelKeys(p), ...String(p.mkeys || '').split(' ').filter(Boolean)])];
     keysOf.set(p.id, keys);
     for (const k of keys) {
       const scope = `${p.type}|${p.type === 'part' ? p.category || '' : ''}|${k}`;
-      if (owner.has(scope)) { const a = find(p.id), b = find(owner.get(scope)); if (a !== b) parent.set(a, b); }
+      if (owner.has(scope)) {
+        const a = find(p.id), b = find(owner.get(scope));
+        // Farklı varyant (depolama/RAM) ya da çok farklı fiyat düzeyi: aynı anahtar olsa da birleştirilmez
+        if (a !== b && fits(a, b)) { parent.set(a, b); members.set(b, members.get(b).concat(members.get(a))); members.delete(a); }
+      }
       else owner.set(scope, p.id);
     }
   }

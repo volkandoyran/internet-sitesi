@@ -101,7 +101,7 @@ async function post(items, stat) {
   for (let i = 0; i < items.length; i += 10) {
     const r = await api('catalog', { method: 'POST', body: JSON.stringify({ rates: rateMap, items: items.slice(i, i + 10) }) });
     if (!r.ok) { console.error('  gönderilemedi:', r.status, r.txt.slice(0, 300)); stat.gonderilemedi = (stat.gonderilemedi || 0) + 1; continue; }
-    for (const k of ['added', 'linked', 'updated', 'removed', 'changed', 'unchanged']) stat.site[k] = (stat.site[k] || 0) + (r.data?.[k] || 0);
+    for (const k of ['added', 'linked', 'updated', 'removed', 'changed', 'unchanged', 'suspicious']) stat.site[k] = (stat.site[k] || 0) + (r.data?.[k] || 0);
   }
 }
 
@@ -143,6 +143,7 @@ async function processUrl(id, cfg, url, stat, items) {
       retailer_id: id, url, name: p.name, brand: p.brand, image: p.image,
       ...kind, ...specs, ...(page ? { specs: page } : {}),
       match_key, keys: modelKeys({ ...p, ...kind, ...specs, match_key }),
+      gtin: p.gtin ?? null, sku: p.sku ?? null, source: (p.source || 'html') + (cfg.render ? '+render' : ''),
       price: p.price, currency: p.currency, in_stock: p.in_stock,
       old_price: p.old_price ?? null, description: p.description ?? null, store_category: p.store_category ?? null,
     });
@@ -159,8 +160,10 @@ async function processUrl(id, cfg, url, stat, items) {
   if (items.length >= 10) await post(items.splice(0), stat);
 }
 
+// Bilinen bağlantılar kontrol sırasına göre: önce hiç planlanmamışlar, sonra zamanı en eski olanlar
+const dueAt = (k) => k.next_check_at || k.updated_at || '';
 const staleOf = (id) => known.filter((k) => k.retailer_id === id)
-  .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+  .sort((a, b) => String(dueAt(a)).localeCompare(String(dueAt(b))));
 
 async function runStore(r) {
   const id = r.id;
@@ -177,9 +180,12 @@ async function runStore(r) {
     stat.aday = candidates.length;
     const mine = staleOf(id);
     const knownSet = new Set(mine.map((k) => k.url));
-    // Yakın zamanda kontrol edilmiş bağlantılar tekrar açılmaz (sıklığın %80'i kadar süre)
+    // Zamanı gelen bağlantılar açılır. Site her ürüne değişim hızına göre bir sonraki kontrol zamanı verir
+    // (sık değişen ürün mağaza sıklığında, uzun süre değişmeyen 4 katına kadar seyrek). Zamanı yoksa eski kural:
+    // sıklığın %80'i kadar süre içinde kontrol edilmişse açılmaz.
     const freshFor = Math.max(1, (r.interval_hours || 6) * 0.8) * 3600e3;
-    const stale = mine.filter((k) => !k.updated_at || Date.now() - Date.parse(k.updated_at) > freshFor).slice(0, cfg.refreshLimit ? Math.min(cfg.refreshLimit, REFRESH_LIMIT) : REFRESH_LIMIT).map((k) => k.url);
+    const now = Date.now();
+    const stale = mine.filter((k) => k.next_check_at ? Date.parse(k.next_check_at) <= now : (!k.updated_at || now - Date.parse(k.updated_at) > freshFor)).slice(0, cfg.refreshLimit ? Math.min(cfg.refreshLimit, REFRESH_LIMIT) : REFRESH_LIMIT).map((k) => k.url);
     let fresh = candidates.filter((u) => !knownSet.has(u)).slice(0, cfg.newLimit ? Math.min(cfg.newLimit, NEW_LIMIT) : NEW_LIMIT);
     let queue = [...fresh, ...stale];
     if (SAMPLE) { fresh = fresh.slice(0, SAMPLE); queue = [...fresh, ...stale.slice(0, Math.max(0, SAMPLE - fresh.length))]; }
@@ -202,6 +208,8 @@ async function runStore(r) {
     console.error(id, stat.blocked ? 'ENGELLENDİ:' : 'başarısız:', e.message);
   }
   stat.finished_at = new Date().toISOString();
+  stat.istek = net.requestsFor(cfg.site || r.site || '');
+  stat.sure_s = Math.round((Date.parse(stat.finished_at) - Date.parse(stat.started_at)) / 1000);
   return stat;
 }
 
@@ -216,7 +224,7 @@ await net.close();
 // Rapor: panelde son başarılı / son hata zamanı ve mesajı
 const runs = summary.map((s) => ({
   retailer_id: s.id, started_at: s.started_at, finished_at: s.finished_at, ok: !!s.ok, blocked: !!s.blocked, pause_hours: s.blocked ? 24 : 0,
-  pages: s.sayfa, added: s.site.added || 0, changed: s.site.changed || 0, unchanged: s.site.unchanged || 0, errors: s.hata,
+  pages: s.sayfa, requests: s.istek || 0, duration_s: s.sure_s || 0, suspicious: s.site.suspicious || 0, added: s.site.added || 0, changed: s.site.changed || 0, unchanged: s.site.unchanged || 0, errors: s.hata,
   message: s.ok ? (s.hata ? `${s.hata} sayfada hata: ${Object.keys(s.hatalar).slice(0, 2).join(' | ')}` : null) : s.mesaj,
 }));
 if (!DRY) {
