@@ -7,7 +7,7 @@ const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
 const only = process.env.MAGAZA;
 let list = null;
 try {
-  const r = await fetch(`${SITE}/api/admin/scraper/plan`, { headers: { authorization: 'Bearer ' + process.env.ADMIN_PASSWORD }, signal: AbortSignal.timeout(30000) });
+  const r = await fetch(`${SITE}/api/admin/scraper/plan`, { headers: { authorization: 'Bearer ' + (process.env.ADMIN_PASSWORD || '').trim() }, signal: AbortSignal.timeout(30000) });
   if (r.ok) list = (await r.json()).retailers;
   else console.log('Plan alınamadı:', r.status);
 } catch (e) { console.log('Plan alınamadı:', e.message); }

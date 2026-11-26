@@ -59,6 +59,14 @@ Kurallar:
 - **Fiyat geçmişi:** yalnızca mağazanın fiyatı değişince yeni satır yazılır (kur oynaması sayılmaz). Fiyat değişmediyse yalnızca son kontrol zamanı güncellenir.
 - **robots.txt** kurallarına uyulur; istekler arasında mağaza başına bekleme vardır (`delayMs`, robots.txt `Crawl-delay` daha büyükse o).
 - **403 / 429 / CAPTCHA / bot doğrulama sayfası:** mağaza o turda bırakılır ve duraklatılır (24 saat, art arda engelde 48, 72 ... en çok 7 gün). Engel aşılmaya çalışılmaz (proxy, IP değiştirme, CAPTCHA çözümü yok). Panelden "Duraklatmayı kaldır" ile erken denenebilir.
+- **Bot kimliği:** istekler dürüst bir kimlikle gider: `UcfiyatBot/1.0 (+depo adresi; price comparison)`. Tarayıcı taklidi yapılmaz. Mağaza robots.txt'de `User-agent: UcfiyatBot` grubu yazarsa o kurallar `*` grubundan önce uygulanır.
+- **Tekrar deneme:** ağ hatası ve 5xx yanıtında 2 kez, artan beklemeyle (2 sn, 4 sn + rastgele); 403/429/CAPTCHA tekrar denenmez.
+- **Barkod / SKU:** JSON-LD'deki `gtin13/gtin/gtin14/gtin12/gtin8` (kontrol hanesi doğrulanır, 13 haneye çevrilir) ve `sku` kaydedilir. Aynı barkodlu ürünler ülkeler arasında önce barkodla eşleşir.
+- **Varyant koruması:** ortak model kodu olsa da depolaması / RAM'i farklı (%10'dan fazla) ya da fiyat düzeyi 3 kattan fazla farklı ürünler birleştirilmez (`lib/catalog.js` `compatible`). Aynı barkod bu kuralın önündedir.
+- **Şüpheli fiyat:** bilinen fiyattan yarıdan fazla düşen ya da 2,5 katından fazla artan fiyat hemen kabul edilmez; eski fiyat kalır, yeni fiyat "bekliyor" olarak saklanır ve ürün bir sonraki turda yeniden kontrol edilir. Aynı fiyat tekrar okunursa kabul edilir. Yeni eklenen teklif aynı ürünün diğer mağazalarından çok saparsa (en ucuzun %40'ından az ya da en pahalının 2,5 katından fazla) "doğrulanmadı" olarak kaydedilir ve sitede gösterilmez; sonraki taramada aynı çıkarsa doğrulanır.
+- **Kaynak ve güvenilirlik:** her teklifte fiyatın nereden okunduğu (`jsonld`, `meta`, `html`, `selector`, Playwright ise `+render`) ve 0-100 güvenilirlik puanı tutulur (JSON-LD 90, meta 80, seçici 75, HTML 65; Playwright −5, doğrulanmış büyük sıçrama −10, doğrulanmamış en çok 30).
+- **Değişim hızına göre sıklık:** her teklifin `next_check_at` zamanı vardır. Fiyatı değişen ürün mağaza sıklığında, art arda değişmeyen ürün her 3 kontrolde bir kat daha seyrek (en çok 4 katı) kontrol edilir. Böylece istek sayısı düşer.
+- **Ölçüm:** her çalıştırmada mağaza başına istek sayısı, süre ve şüpheli fiyat sayısı kaydedilir (panel: *Son çalıştırmalar*).
 - Bir mağazanın hatası diğerlerini durdurmaz; her mağazanın sonucu panelde *Veri toplama → Son çalıştırmalar* tablosunda görünür.
 - **Playwright** yalnızca adaptöründe `render: true` olan mağazalarda (şu an Technopolis) ve yalnızca o turda böyle bir mağaza varsa kurulur; görsel, font, video, stil ve reklam/analitik istekleri engellenir.
 
